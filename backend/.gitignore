@@ -2,6 +2,7 @@ node_modules/
 dist/
 service_account_key.json
 *.log
-.env
+.env*
 .DS_Store
 .backend/create-secrets.sh
+flexboard-v2-firebase-adminsdk-*.json

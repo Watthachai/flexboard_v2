@@ -1,9 +1,13 @@
-import * as admin from "firebase-admin";
+import admin from "firebase-admin";
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import dotenv from "dotenv";
 import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Load environment variables
 dotenv.config();
@@ -60,16 +64,8 @@ export const db = admin.firestore();
 
 // ===== Import Routes =====
 import { authRouter } from "./routes/auth";
-import { saleOrdersRouter } from "./routes/saleOrders";
-import { tenantsRouter } from "./routes/tenants";
-import { productsRouter } from "./routes/products";
-import { customersRouter } from "./routes/customers";
-import { contactPersonsRouter } from "./routes/contactPersons";
-import { deliveryLocationsRouter } from "./routes/deliveryLocations";
-import { salespersonsRouter } from "./routes/salespersons";
-import { suppliersRouter } from "./routes/suppliers";
-import { unitsRouter } from "./routes/units";
 import inviteCodesRouter from "./routes/inviteCodes";
+import configRouter from "./routes/config";
 import adminUIRouter from "./routes/adminUIReact"; // ใช้ React version
 
 // ===== Express App =====
@@ -99,10 +95,11 @@ app.use(
     origin: [
       "http://localhost:9002",
       "http://localhost:3000",
+
       // Production Frontend
-      "https://nappaint.fittsystem.com",
+      //"https://nappaint.fittsystem.com",
       // Staging Frontend
-      "https://sandbox-nappaint.fittsystem.com",
+      //"https://sandbox-nappaint.fittsystem.com",
     ],
     credentials: true,
   })
@@ -131,17 +128,7 @@ app.get("/health", (req: Request, res: Response) => {
 
 // ===== API Routes =====
 app.use("/api/auth", authRouter);
-app.use("/api/sale-orders", saleOrdersRouter);
-app.use("/api/tenants", tenantsRouter);
-
-// Master Data Routes
-app.use("/api/products", productsRouter);
-app.use("/api/customers", customersRouter);
-app.use("/api/contact-persons", contactPersonsRouter);
-app.use("/api/delivery-locations", deliveryLocationsRouter);
-app.use("/api/salespersons", salespersonsRouter);
-app.use("/api/suppliers", suppliersRouter);
-app.use("/api/units", unitsRouter);
+app.use("/api/tenants", configRouter);
 
 // Invite Codes Route
 app.use("/api/invite-codes", inviteCodesRouter);
