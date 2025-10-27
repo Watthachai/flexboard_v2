@@ -6,7 +6,7 @@ import {
   requireTenant,
   requireRole,
   requireAdmin,
-} from "./middleware/auth";
+} from "../middleware/auth";
 
 export const tenantsRouter = Router();
 
@@ -42,7 +42,8 @@ tenantsRouter.get("/", requireAdmin, async (req: any, res: any) => {
       id: doc.id,
       name: doc.data().name || doc.data().companyName || doc.id,
       description: doc.data().description || "",
-      createdAt: doc.data().createdAt?.toDate(),
+      status: doc.data().status || "active",
+      createdAt: doc.data().createdAt?.toDate() || new Date(),
     }));
 
     // Sort in memory

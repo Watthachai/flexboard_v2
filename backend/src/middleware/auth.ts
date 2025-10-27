@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Request, Response, NextFunction } from "express";
-import * as admin from "firebase-admin";
+import admin from "firebase-admin";
 import { z, ZodSchema } from "zod";
 
 /**
@@ -23,14 +23,44 @@ export const authenticateUser = async (
     // Verify Firebase ID Token
     const decodedToken = await admin.auth().verifyIdToken(idToken);
 
+    // Super Admin email list
+    const SUPER_ADMIN_EMAILS = ["wattchaichai@gmail.com"];
+
+    // Check if user is super admin by email
+    const isSuperAdminByEmail = SUPER_ADMIN_EMAILS.includes(
+      decodedToken.email || ""
+    );
+
+    // If user is super admin by email but doesn't have the claim, set it
+    // NOTE: Temporarily disabled due to permission issues
+    // Will be enabled once service account has proper permissions
+    /*
+    if (isSuperAdminByEmail && !decodedToken.isSuperAdmin) {
+      console.log("🔧 Setting super admin claims for:", decodedToken.email);
+      await admin.auth().setCustomUserClaims(decodedToken.uid, {
+        isSuperAdmin: true,
+        isAdmin: true,
+        role: "admin",
+      });
+
+      // Note: The claims won't be in this token, but will be in the next one
+      // For this request, we'll manually add them
+      decodedToken.isSuperAdmin = true;
+      decodedToken.isAdmin = true;
+      decodedToken.role = decodedToken.role || "admin";
+    }
+    */
+
     // Attach user info to request (decodedToken already includes all custom claims)
     (req as any).user = {
       ...decodedToken,
+      isSuperAdmin: decodedToken.isSuperAdmin || isSuperAdminByEmail,
+      isAdmin: decodedToken.isAdmin || isSuperAdminByEmail,
       customClaims: {
         role: decodedToken.role,
         tenantId: decodedToken.tenantId,
-        isAdmin: decodedToken.isAdmin,
-        isSuperAdmin: decodedToken.isSuperAdmin,
+        isAdmin: decodedToken.isAdmin || isSuperAdminByEmail,
+        isSuperAdmin: decodedToken.isSuperAdmin || isSuperAdminByEmail,
       },
     };
 
@@ -39,8 +69,8 @@ export const authenticateUser = async (
       email: decodedToken.email,
       role: decodedToken.role,
       tenantId: decodedToken.tenantId,
-      isAdmin: decodedToken.isAdmin,
-      isSuperAdmin: decodedToken.isSuperAdmin,
+      isAdmin: (req as any).user.isAdmin,
+      isSuperAdmin: (req as any).user.isSuperAdmin,
     });
 
     next();
@@ -99,16 +129,27 @@ export const requireAdmin = (
 ): any => {
   const user = (req as any).user;
 
+  console.log("🔐 Checking admin access:", {
+    email: user?.email,
+    isAdmin: user?.isAdmin,
+    isSuperAdmin: user?.isSuperAdmin,
+    role: user?.role,
+    tenantId: user?.tenantId,
+  });
+
   // Allow if super admin (no tenant required)
-  if (user?.isAdmin === true || user?.isSuperAdmin === true) {
+  if (user?.isSuperAdmin === true || user?.isAdmin === true) {
+    console.log("✅ Access granted: Super Admin");
     return next();
   }
 
   // Allow if tenant admin
   if (user?.role === "admin" && user?.tenantId) {
+    console.log("✅ Access granted: Tenant Admin");
     return next();
   }
 
+  console.log("❌ Access denied: Not an admin");
   return res.status(403).json({
     error: "Forbidden: Admin access required",
     message: "Only admins can access this resource",

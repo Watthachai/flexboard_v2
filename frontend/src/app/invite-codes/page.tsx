@@ -9,14 +9,7 @@ import {
   TableBody,
   TableCell,
 } from "@/components/ui/table";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
-  CardDescription,
-  CardFooter,
-} from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -38,6 +31,15 @@ import { Label } from "@/components/ui/label";
 import { PlusCircle, Copy, Ban, Trash2 } from "lucide-react";
 import { Toaster } from "sonner";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
+import { useRouter } from "next/navigation";
+import {
+  getAllInviteCodes,
+  createInviteCode,
+  revokeInviteCode,
+  deleteInviteCode,
+  getAllTenants,
+} from "@/lib/api";
 
 // --- Type Definitions ---
 type InviteCode = {
@@ -63,16 +65,12 @@ type Statistics = {
   expired: number;
 };
 
-const API_BASE = "/api/invite-codes";
-
 // --- Create/Edit Invite Code Modal ---
 const CreateCodeModal = ({
-  token,
   open,
   onOpenChange,
   onCreated,
 }: {
-  token: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated: () => void;
@@ -101,12 +99,8 @@ const CreateCodeModal = ({
       const fetchTenants = async () => {
         setLoadingTenants(true);
         try {
-          const response = await fetch("/api/tenants", {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (response.ok) {
-            setTenants(await response.json());
-          }
+          const data = await getAllTenants();
+          setTenants(data);
         } catch (error) {
           console.error("Failed to fetch tenants:", error);
           toast.error("Could not fetch tenants");
@@ -116,7 +110,7 @@ const CreateCodeModal = ({
       };
       fetchTenants();
     }
-  }, [open, token]);
+  }, [open]);
 
   const handleTenantSelect = (value: string) => {
     if (value === "__new__") {
@@ -154,19 +148,7 @@ const CreateCodeModal = ({
     if (expiresAt) payload.expiresAt = new Date(expiresAt).toISOString();
 
     try {
-      const response = await fetch(API_BASE, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.error || "Failed to create invite code");
-      }
+      const result = await createInviteCode(payload);
       toast.success("Invite Code Created", {
         description: `Code: ${result.code}`,
       });
@@ -178,39 +160,45 @@ const CreateCodeModal = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>Create Invite Code</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <Label>Tenant</Label>
+        <form onSubmit={handleSubmit} className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="tenant-select">
+              Tenant <span className="text-red-500">*</span>
+            </Label>
             {loadingTenants ? (
-              <p className="text-sm text-gray-500">Loading...</p>
+              <p className="text-sm text-muted-foreground">
+                Loading tenants...
+              </p>
             ) : (
               <Select
                 onValueChange={handleTenantSelect}
                 value={isNewTenant ? "__new__" : tenantId}
               >
-                <SelectTrigger>
+                <SelectTrigger id="tenant-select">
                   <SelectValue placeholder="Select a tenant" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="__new__">+ Create New Tenant</SelectItem>
                   {tenants.map((t) => (
                     <SelectItem key={t.id} value={t.id}>
-                      {t.name} ({t.id})
+                      {t.name}
                     </SelectItem>
                   ))}
-                  <SelectItem value="__new__">Create New Tenant</SelectItem>
                 </SelectContent>
               </Select>
             )}
           </div>
 
           {isNewTenant && (
-            <div className="space-y-2 border-l-2 border-blue-500 pl-4 py-2">
-              <h3 className="text-sm font-semibold">New Tenant Details</h3>
-              <div>
+            <div className="space-y-3 rounded-md border border-blue-200 bg-blue-50 p-4">
+              <h3 className="text-sm font-semibold text-blue-900">
+                New Tenant Details
+              </h3>
+              <div className="space-y-2">
                 <Label htmlFor="tenant-name">Tenant Name</Label>
                 <Input
                   id="tenant-name"
@@ -222,7 +210,7 @@ const CreateCodeModal = ({
                   required
                 />
               </div>
-              <div>
+              <div className="space-y-2">
                 <Label htmlFor="tenant-id">Tenant ID</Label>
                 <Input
                   id="tenant-id"
@@ -233,27 +221,30 @@ const CreateCodeModal = ({
                   placeholder="auto-generated"
                   required
                 />
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-muted-foreground">
                   Lowercase, numbers, and underscores only.
                 </p>
               </div>
             </div>
           )}
 
-          <div>
-            <Label htmlFor="role">Role</Label>
+          <div className="space-y-2">
+            <Label htmlFor="role">
+              Role <span className="text-red-500">*</span>
+            </Label>
             <Select value={role} onValueChange={setRole}>
               <SelectTrigger id="role">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="admin">Admin</SelectItem>
-                <SelectItem value="sales">Sales</SelectItem>
-                <SelectItem value="viewer">Viewer</SelectItem>
+                <SelectItem value="admin">Admin - Full access</SelectItem>
+                <SelectItem value="sales">Sales - Manage customers</SelectItem>
+                <SelectItem value="viewer">Viewer - Read only</SelectItem>
               </SelectContent>
             </Select>
           </div>
-          <div>
+
+          <div className="space-y-2">
             <Label htmlFor="max-uses">Max Uses (Optional)</Label>
             <Input
               id="max-uses"
@@ -264,7 +255,8 @@ const CreateCodeModal = ({
               placeholder="Leave empty for unlimited"
             />
           </div>
-          <div>
+
+          <div className="space-y-2">
             <Label htmlFor="expires-at">Expires At (Optional)</Label>
             <Input
               id="expires-at"
@@ -284,7 +276,9 @@ const CreateCodeModal = ({
             >
               Cancel
             </Button>
-            <Button type="submit">Create Code</Button>
+            <Button type="submit" variant="primary">
+              Create Code
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -293,13 +287,7 @@ const CreateCodeModal = ({
 };
 
 // --- Invite Codes Page ---
-const InviteCodesClientPage = ({
-  token,
-  onLogout,
-}: {
-  token: string;
-  onLogout: () => void;
-}) => {
+const InviteCodesClientPage = ({ onLogout }: { onLogout: () => void }) => {
   const [codes, setCodes] = useState<InviteCode[]>([]);
   const [stats, setStats] = useState<Statistics>({
     total: 0,
@@ -313,11 +301,7 @@ const InviteCodesClientPage = ({
   const fetchCodes = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch(API_BASE, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) throw new Error("Failed to fetch invite codes.");
-      const data: InviteCode[] = await response.json();
+      const data: InviteCode[] = await getAllInviteCodes();
       setCodes(data);
 
       const now = new Date();
@@ -339,13 +323,11 @@ const InviteCodesClientPage = ({
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, []);
 
   useEffect(() => {
-    if (token) {
-      fetchCodes();
-    }
-  }, [token, fetchCodes]);
+    fetchCodes();
+  }, [fetchCodes]);
 
   const handleCopy = (code: string) => {
     navigator.clipboard.writeText(code);
@@ -355,11 +337,7 @@ const InviteCodesClientPage = ({
   const handleRevoke = async (code: string) => {
     if (!confirm(`Are you sure you want to revoke code ${code}?`)) return;
     try {
-      const response = await fetch(`${API_BASE}/${code}/revoke`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) throw new Error("Failed to revoke.");
+      await revokeInviteCode(code);
       toast.success("Code Revoked", { description: code });
       fetchCodes();
     } catch (err: any) {
@@ -371,11 +349,7 @@ const InviteCodesClientPage = ({
     if (!confirm(`Are you sure you want to permanently delete code ${code}?`))
       return;
     try {
-      const response = await fetch(`${API_BASE}/${code}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!response.ok) throw new Error("Failed to delete.");
+      await deleteInviteCode(code);
       toast.success("Code Deleted", { description: code });
       fetchCodes();
     } catch (err: any) {
@@ -391,10 +365,9 @@ const InviteCodesClientPage = ({
   };
 
   return (
-    <div className="min-h-screen bg-gray-50/50 p-4 sm:p-6 lg:p-8">
+    <>
       <Toaster position="top-right" />
       <CreateCodeModal
-        token={token}
         open={isModalOpen}
         onOpenChange={setIsModalOpen}
         onCreated={() => {
@@ -551,62 +524,41 @@ const InviteCodesClientPage = ({
           )}
         </CardContent>
       </Card>
-    </div>
-  );
-};
-
-// --- Login Page (re-used logic) ---
-const LoginPage = ({ onLogin }: { onLogin: (token: string) => void }) => {
-  // This is a simplified login form for this page.
-  // In a real app, this would be a shared component.
-  const [token, setToken] = useState("");
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-100">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle className="text-2xl">Admin Authentication</CardTitle>
-          <CardDescription>
-            Enter your token to manage Invite Codes.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Input
-            type="password"
-            placeholder="Paste your token..."
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-          />
-        </CardContent>
-        <CardFooter>
-          <Button className="w-full" onClick={() => onLogin(token)}>
-            Login
-          </Button>
-        </CardFooter>
-      </Card>
-    </div>
+    </>
   );
 };
 
 // --- Main App Component (Handles Auth State) ---
 export default function AdminInviteCodesPage() {
-  const [token, setToken] = useState<string | null>(() => {
-    if (typeof window !== "undefined") {
-      return sessionStorage.getItem("adminAuthToken");
+  const router = useRouter();
+  const { user, loading, isAdmin, logout } = useAuth();
+
+  useEffect(() => {
+    if (!loading && (!user || !isAdmin)) {
+      router.push("/");
     }
-    return null;
-  });
+  }, [user, loading, isAdmin, router]);
 
-  const handleLogin = (newToken: string) => {
-    sessionStorage.setItem("adminAuthToken", newToken);
-    setToken(newToken);
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <p className="text-gray-500">Loading...</p>
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <p className="text-red-600">Access denied</p>
+      </div>
+    );
+  }
+
+  const handleLogout = async () => {
+    await logout();
+    router.push("/");
   };
 
-  const handleLogout = () => {
-    sessionStorage.removeItem("adminAuthToken");
-    setToken(null);
-  };
-
-  if (!token) return <LoginPage onLogin={handleLogin} />;
-
-  return <InviteCodesClientPage token={token} onLogout={handleLogout} />;
+  return <InviteCodesClientPage onLogout={handleLogout} />;
 }

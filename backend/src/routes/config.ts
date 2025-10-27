@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { z } from "zod";
 import { db } from "../index";
+import { authenticateUser, requireAdmin } from "../middleware/auth";
 
 const router = Router();
 
@@ -39,6 +40,40 @@ const ConfigSchema = z.object({
 });
 
 type DashboardConfig = z.infer<typeof ConfigSchema>;
+
+/**
+ * GET /api/tenants
+ * Fetch list of all tenants
+ */
+router.get(
+  "/",
+  authenticateUser,
+  requireAdmin,
+  async (req: Request, res: Response) => {
+    try {
+      const tenantsSnapshot = await db.collection("tenants").get();
+
+      const tenants = tenantsSnapshot.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          name: data.name || doc.id,
+          description: data.description || "",
+          createdAt: data.createdAt?.toDate() || null,
+          updatedAt: data.updatedAt?.toDate() || null,
+        };
+      });
+
+      res.json(tenants);
+    } catch (error) {
+      console.error("Error fetching tenants:", error);
+      res.status(500).json({
+        error: "Failed to fetch tenants",
+        details: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+);
 
 /**
  * GET /api/tenants/:tenantId/config

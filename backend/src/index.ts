@@ -9,8 +9,13 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load environment variables
-dotenv.config();
+// Load environment variables - .env.local overrides .env
+// Load .env first as base
+dotenv.config({ path: path.join(__dirname, "../.env") });
+// Then override with .env.local if it exists
+dotenv.config({ path: path.join(__dirname, "../.env.local"), override: true });
+
+console.log("📁 Loaded environment files: .env and .env.local");
 
 // Determine environment (default to production)
 const environment =
@@ -40,19 +45,21 @@ if (process.env[serviceAccountEnvKey]) {
   });
   console.log("✅ Firebase initialized with legacy service account");
 } else {
-  // Try to use service account file
+  // Try to use service account file for flexboard-v2
   try {
     const serviceAccount = require(path.join(
       __dirname,
-      "../service_account_key.json"
+      "../flexboard-v2-firebase-adminsdk-fbsvc-fca7f36834.json"
     ));
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
     });
-    console.log("✅ Firebase initialized with service_account_key.json");
+    console.log(
+      "✅ Firebase initialized with flexboard-v2 service account file"
+    );
   } catch (error) {
     console.error(
-      `❌ Error: ${serviceAccountEnvKey} not found in environment variables and service_account_key.json not found`
+      `❌ Error: ${serviceAccountEnvKey} not found in environment variables and flexboard-v2 service account file not found`
     );
     console.error(`   Please set ${serviceAccountEnvKey} in .env file`);
     process.exit(1);

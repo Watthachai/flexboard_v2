@@ -1,7 +1,8 @@
 import type { Config } from "tailwindcss";
 import defaultTheme from "tailwindcss/defaultTheme";
+import animate from "tailwindcss-animate"; // ✅ ใช้ import แบบ ES module (ไม่ใช้ require)
 
-const config = {
+const config: Config = {
   darkMode: "class",
   content: ["./src/**/*.{js,ts,jsx,tsx,mdx}"],
   theme: {
@@ -72,6 +73,7 @@ const config = {
       },
     },
   },
-} satisfies Config;
+  plugins: [animate], // ✅ เพิ่ม plugin แบบถูกต้อง
+};
 
 export default config;

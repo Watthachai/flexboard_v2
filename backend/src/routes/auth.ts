@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Router } from "express";
-import * as admin from "firebase-admin";
+import admin from "firebase-admin";
 import { z } from "zod";
 import { db } from "../index";
 import { authenticateUser, validateBody } from "../middleware/auth";
@@ -127,7 +127,28 @@ authRouter.post(
 authRouter.get("/me", authenticateUser, async (req, res) => {
   try {
     const user = (req as any).user;
-    res.json({ user });
+
+    // Get fresh user data from Firebase Auth to show current claims
+    const userRecord = await admin.auth().getUser(user.uid);
+
+    res.json({
+      user: {
+        uid: user.uid,
+        email: user.email,
+        emailVerified: userRecord.emailVerified,
+        displayName: user.name,
+        photoURL: userRecord.photoURL,
+        // Custom claims from token
+        tokenClaims: {
+          role: user.role,
+          tenantId: user.tenantId,
+          isAdmin: user.isAdmin,
+          isSuperAdmin: user.isSuperAdmin,
+        },
+        // Custom claims from Firebase (latest)
+        firebaseClaims: userRecord.customClaims || {},
+      },
+    });
   } catch (error: any) {
     console.error("Error getting user:", error);
     res.status(500).json({ error: error.message });

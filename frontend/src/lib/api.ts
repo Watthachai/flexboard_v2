@@ -15,7 +15,7 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
   // Get current user and token
   const auth = getAuth();
   const user = auth.currentUser;
-
+  
   if (!user) {
     throw new Error("Not authenticated");
   }
