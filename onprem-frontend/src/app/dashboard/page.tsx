@@ -56,6 +56,10 @@ export default function DashboardPage() {
     localStorage.removeItem("tenantId");
     localStorage.removeItem("inviteCode");
     localStorage.removeItem("dashboardConfig");
+
+    // Clear cookie
+    document.cookie = "tenantId=; path=/; max-age=0";
+
     router.push("/");
   };
 
