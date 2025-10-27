@@ -1,0 +1,7 @@
+node_modules/
+dist/
+service_account_key.json
+*.log
+.env
+.DS_Store
+.backend/create-secrets.sh

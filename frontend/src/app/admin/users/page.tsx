@@ -1,0 +1,526 @@
+
+"use client";
+
+import { useState, useEffect, useMemo } from "react";
+import {
+  Table,
+  TableHeader,
+  TableRow,
+  TableHead,
+  TableBody,
+  TableCell,
+} from "@/components/ui/table";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter,
+    DialogTrigger,
+    DialogClose,
+  } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { MoreHorizontal, UserPlus, Trash2 } from "lucide-react";
+import { useToast } from "@/components/ui/use-toast";
+import { Toaster } from "@/components/ui/sonner";
+import { sonner } from "sonner";
+
+
+// --- Type Definitions ---
+type User = {
+  uid: string;
+  email?: string;
+  displayName?: string;
+  photoURL?: string;
+  tenantId?: string;
+  role?: "admin" | "sales" | "viewer" | string; // Allow other roles
+  metadata: {
+    lastSignInTime?: string;
+    creationTime?: string;
+  };
+};
+
+type Stats = {
+    total: number;
+    assigned: number;
+    unassigned: number;
+    filtered: number;
+}
+
+
+// --- Main User Management Page Component ---
+const UserManagementPage = ({ token, onLogout }: { token: string; onLogout: () => void; }) => {
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterTenant, setFilterTenant] = useState('all');
+  
+  const [tenants, setTenants] = useState<string[]>([]);
+
+  // Dialog states
+  const [isRoleDialogOpen, setIsRoleDialogOpen] = useState(false);
+  const [isRemoveDialogOpen, setIsRemoveDialogOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [newRole, setNewRole] = useState<string>('');
+
+
+  // Fetch users and tenants from API
+  const fetchUsers = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const response = await fetch('/api/auth/list-all-users', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error('Access denied. Super Admin role required.');
+        }
+        const errData = await response.json().catch(() => ({ error: 'Failed to fetch users' }));
+        throw new Error(errData.error || 'Failed to fetch users');
+      }
+
+      const data: { users: User[] } = await response.json();
+      setUsers(data.users);
+
+      const uniqueTenants = [...new Set(data.users.map(u => u.tenantId).filter(Boolean) as string[])];
+      setTenants(uniqueTenants.sort());
+
+    } catch (err: any) {
+      setError(err.message);
+      sonner.error("Fetch Error", { description: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  // Memoized filtering logic
+  const filteredUsers = useMemo(() => {
+    return users.filter(user => {
+      const matchSearch = !searchTerm || 
+        user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.displayName?.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      const matchTenant = filterTenant === 'all' || 
+        (filterTenant === 'none' && !user.tenantId) ||
+        user.tenantId === filterTenant;
+
+      return matchSearch && matchTenant;
+    });
+  }, [users, searchTerm, filterTenant]);
+
+  // Memoized statistics
+  const stats: Stats = useMemo(() => ({
+    total: users.length,
+    assigned: users.filter(u => u.tenantId).length,
+    unassigned: users.filter(u => !u.tenantId).length,
+    filtered: filteredUsers.length,
+  }), [users, filteredUsers]);
+
+  // --- Action Handlers ---
+
+  const handleOpenRoleDialog = (user: User) => {
+    setSelectedUser(user);
+    setNewRole(user.role || 'viewer');
+    setIsRoleDialogOpen(true);
+  };
+
+  const handleUpdateRole = async () => {
+    if (!selectedUser) return;
+    
+    try {
+      const response = await fetch('/api/auth/update-role', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ 
+          uid: selectedUser.uid,
+          role: newRole,
+          tenantId: selectedUser.tenantId
+        })
+      });
+
+      const resData = await response.json();
+      if (!response.ok) {
+        throw new Error(resData.error || 'Failed to update role');
+      }
+
+      sonner.success("Role Updated", {
+        description: `User ${selectedUser.email} role changed to ${newRole}. User must re-login to see changes.`
+      });
+      fetchUsers(); // Refresh list
+    } catch (err: any) {
+        sonner.error("Update Failed", { description: err.message });
+    } finally {
+        setIsRoleDialogOpen(false);
+        setSelectedUser(null);
+    }
+  };
+  
+  const handleOpenRemoveDialog = (user: User) => {
+    setSelectedUser(user);
+    setIsRemoveDialogOpen(true);
+  };
+
+  const handleRemoveUser = async () => {
+    if (!selectedUser) return;
+
+    try {
+        const response = await fetch('/api/auth/remove-user', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ userId: selectedUser.uid })
+          });
+
+          const resData = await response.json();
+          if (!response.ok) {
+            throw new Error(resData.error || 'Failed to remove user from tenant.');
+          }
+
+          sonner.success("User Removed", {
+            description: `User ${selectedUser.email} removed from tenant. User must re-login to see changes.`
+          });
+          fetchUsers(); // Refresh list
+    } catch (err: any) {
+        sonner.error("Removal Failed", { description: err.message });
+    } finally {
+        setIsRemoveDialogOpen(false);
+        setSelectedUser(null);
+    }
+  };
+
+
+  return (
+    <div className="min-h-screen bg-gray-50/50 p-4 sm:p-6 lg:p-8">
+      <Toaster position="top-right" />
+      <div className="max-w-7xl mx-auto">
+        
+        {/* Header */}
+        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
+            <div>
+                <h1 className="text-3xl font-bold text-gray-900">User Management</h1>
+                <p className="text-md text-gray-600 mt-1">Manage users across all tenants.</p>
+            </div>
+            <div className="flex gap-2 mt-4 sm:mt-0">
+                <Button variant="outline" onClick={() => window.location.href='/admin/invite-codes'}>
+                    Invite Codes
+                </Button>
+                <Button variant="destructive" onClick={onLogout}>Logout</Button>
+            </div>
+        </header>
+
+        {/* Stat Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <Card>
+                <CardHeader><CardTitle>Total Users</CardTitle></CardHeader>
+                <CardContent><p className="text-3xl font-bold">{stats.total}</p></CardContent>
+            </Card>
+            <Card>
+                <CardHeader><CardTitle>Assigned Users</CardTitle></CardHeader>
+                <CardContent><p className="text-3xl font-bold text-green-600">{stats.assigned}</p></CardContent>
+            </Card>
+            <Card>
+                <CardHeader><CardTitle>Unassigned Users</CardTitle></CardHeader>
+                <CardContent><p className="text-3xl font-bold text-orange-600">{stats.unassigned}</p></CardContent>
+            </Card>
+            <Card>
+                <CardHeader><CardTitle>Filtered Results</CardTitle></CardHeader>
+                <CardContent><p className="text-3xl font-bold text-blue-600">{stats.filtered}</p></CardContent>
+            </Card>
+        </div>
+        
+        <Card>
+            <CardHeader>
+                <div className="flex flex-col md:flex-row justify-between gap-4">
+                    {/* Search Input */}
+                    <div className="w-full md:w-1/2 lg:w-1/3">
+                        <Input 
+                            placeholder="Search by email or name..."
+                            value={searchTerm}
+                            onInput={(e) => setSearchTerm((e.target as HTMLInputElement).value)}
+                        />
+                    </div>
+                    {/* Tenant Filter */}
+                    <div className="w-full md:w-auto">
+                        <Select value={filterTenant} onValueChange={setFilterTenant}>
+                            <SelectTrigger className="w-full md:w-[200px]">
+                                <SelectValue placeholder="Filter by tenant" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All Tenants</SelectItem>
+                                <SelectItem value="none">No Tenant (Unassigned)</SelectItem>
+                                {tenants.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+            </CardHeader>
+            <CardContent>
+                {loading ? (
+                    <div className="text-center py-12">Loading users...</div>
+                ) : error ? (
+                    <div className="text-center py-12 text-red-600">{error}</div>
+                ) : (
+                    <div className="border rounded-lg overflow-hidden">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead className="w-[40%]">User</TableHead>
+                                    <TableHead>Tenant</TableHead>
+                                    <TableHead>Role</TableHead>
+                                    <TableHead>Last Sign In</TableHead>
+                                    <TableHead className="text-right">Actions</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {filteredUsers.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell colSpan={5} className="text-center h-24">
+                                            No users found.
+                                        </TableCell>
+                                    </TableRow>
+                                ) : (
+                                    filteredUsers.map(user => (
+                                        <TableRow key={user.uid}>
+                                            <TableCell>
+                                                <div className="flex items-center gap-3">
+                                                    <Avatar>
+                                                        <AvatarImage src={user.photoURL} />
+                                                        <AvatarFallback>{user.email?.[0].toUpperCase()}</AvatarFallback>
+                                                    </Avatar>
+                                                    <div>
+                                                        <p className="font-medium">{user.displayName || "N/A"}</p>
+                                                        <p className="text-sm text-gray-500">{user.email}</p>
+                                                    </div>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                {user.tenantId ? (
+                                                    <Badge variant="default">{user.tenantId}</Badge>
+                                                ) : (
+                                                    <Badge variant="secondary">Unassigned</Badge>
+                                                )}
+                                            </TableCell>
+                                            <TableCell>
+                                                {user.role ? <Badge variant="outline">{user.role}</Badge> : "N/A"}
+                                            </TableCell>
+                                            <TableCell>
+                                                {user.metadata.lastSignInTime ? new Date(user.metadata.lastSignInTime).toLocaleDateString() : 'Never'}
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button variant="ghost" className="h-8 w-8 p-0">
+                                                            <span className="sr-only">Open menu</span>
+                                                            <MoreHorizontal className="h-4 w-4" />
+                                                        </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end">
+                                                        <DropdownMenuItem onClick={() => handleOpenRoleDialog(user)}>
+                                                            Edit Role
+                                                        </DropdownMenuItem>
+                                                        {user.tenantId && (
+                                                            <DropdownMenuItem onClick={() => handleOpenRemoveDialog(user)} className="text-red-600">
+                                                                Remove from Tenant
+                                                            </DropdownMenuItem>
+                                                        )}
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+      </div>
+
+       {/* Edit Role Dialog */}
+      <Dialog open={isRoleDialogOpen} onOpenChange={setIsRoleDialogOpen}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Edit Role for {selectedUser?.email}</DialogTitle>
+                <DialogDescription>
+                    Select a new role for the user. Changes will apply after their next login.
+                </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+                <Label htmlFor="role-select">Role</Label>
+                <Select value={newRole} onValueChange={setNewRole}>
+                    <SelectTrigger id="role-select">
+                        <SelectValue placeholder="Select a role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="admin">Admin</SelectItem>
+                        <SelectItem value="sales">Sales</SelectItem>
+                        <SelectItem value="viewer">Viewer</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+            <DialogFooter>
+                <DialogClose asChild>
+                    <Button variant="outline">Cancel</Button>
+                </DialogClose>
+                <Button onClick={handleUpdateRole}>Save Changes</Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Remove from Tenant Dialog */}
+      <Dialog open={isRemoveDialogOpen} onOpenChange={setIsRemoveDialogOpen}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Are you sure?</DialogTitle>
+                <DialogDescription>
+                    This will remove <span className="font-bold">{selectedUser?.email}</span> from tenant <span className="font-bold">{selectedUser?.tenantId}</span>.
+                    This action cannot be undone. The user must log in again for the change to take effect.
+                </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+                <DialogClose asChild>
+                    <Button variant="outline">Cancel</Button>
+                </DialogClose>
+                <Button variant="destructive" onClick={handleRemoveUser}>Confirm Removal</Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+    </div>
+  );
+};
+
+
+// --- Login Page Component ---
+const LoginPage = ({ onLogin }: { onLogin: (token: string) => void }) => {
+    const [token, setToken] = useState('');
+    const [error, setError] = useState('');
+  
+    const handleSubmit = async () => {
+      setError('');
+      if (!token.trim()) {
+        setError('Token cannot be empty.');
+        return;
+      }
+      // Simple validation: check if it looks like a JWT
+      if (token.split('.').length !== 3) {
+        setError('Invalid token format. It should be a JWT.');
+        return;
+      }
+      onLogin(token);
+    };
+  
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-100">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="text-2xl">Admin Authentication</CardTitle>
+            <CardDescription>
+              Enter your Firebase Authentication ID token to access the user management dashboard.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="token">Auth Token</Label>
+              <Input
+                id="token"
+                type="password"
+                placeholder="Paste your token here"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+              />
+               {error && <p className="text-sm text-red-500">{error}</p>}
+            </div>
+            <div className="text-sm text-gray-500 bg-gray-50 p-3 rounded-md border">
+                <p className="font-bold">How to get a token:</p>
+                <code className="block text-xs mt-1 bg-gray-200 p-2 rounded">cd backend && npm run get-id-token</code>
+            </div>
+          </CardContent>
+          <CardFooter>
+            <Button className="w-full" onClick={handleSubmit}>
+              Login
+            </Button>
+          </CardFooter>
+        </Card>
+      </div>
+    );
+  };
+  
+
+// --- Main App Component (Handles Auth State) ---
+export default function AdminUsersPage() {
+    const [token, setToken] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        try {
+            const savedToken = sessionStorage.getItem('adminAuthToken');
+            if (savedToken) {
+                setToken(savedToken);
+            }
+        } catch (e) {
+            console.error("Could not access session storage.", e);
+        }
+        setIsLoading(false);
+    }, []);
+
+    const handleLogin = (newToken: string) => {
+        sessionStorage.setItem('adminAuthToken', newToken);
+        setToken(newToken);
+    };
+
+    const handleLogout = () => {
+        sessionStorage.removeItem('adminAuthToken');
+        setToken(null);
+    };
+
+    if (isLoading) {
+        return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+    }
+
+    if (!token) {
+        return <LoginPage onLogin={handleLogin} />;
+    }
+
+    return <UserManagementPage token={token} onLogout={handleLogout} />;
+}
