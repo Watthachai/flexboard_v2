@@ -1,6 +1,8 @@
 "use client";
 
 import { Geist, Geist_Mono } from "next/font/google";
+import { usePathname } from "next/navigation";
+import { useMemo } from "react";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { AppSidebar } from "@/components/app-sidebar";
 import "./globals.css";
@@ -17,9 +19,20 @@ const geistMono = Geist_Mono({
 
 function LayoutContent({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
+  const pathname = usePathname();
 
-  // Show sidebar only if user is logged in
-  const showSidebar = !loading && user;
+  // Check if user has tenant (memoized to avoid unnecessary re-renders)
+  const hasTenant = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    return !!localStorage.getItem("tenantId");
+  }, []);
+
+  // Show sidebar only if:
+  // 1. User is logged in
+  // 2. User has tenant
+  // 3. Currently on dashboard route
+  const showSidebar =
+    !loading && user && hasTenant && pathname?.startsWith("/dashboard");
 
   if (showSidebar) {
     return (
@@ -37,7 +50,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // No sidebar layout for login page
+  // No sidebar layout for login page or invite code page
   return <>{children}</>;
 }
 

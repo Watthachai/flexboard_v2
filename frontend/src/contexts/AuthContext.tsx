@@ -13,6 +13,7 @@ import {
   onAuthStateChanged,
   signInWithPopup,
   GoogleAuthProvider,
+  OAuthProvider,
   User,
   signOut,
 } from "firebase/auth";
@@ -31,12 +32,14 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
+const microsoftProvider = new OAuthProvider("microsoft.com");
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   isAdmin: boolean;
   signInWithGoogle: () => Promise<void>;
+  signInWithMicrosoft: () => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -69,6 +72,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const signInWithMicrosoft = async () => {
+    try {
+      const result = await signInWithPopup(auth, microsoftProvider);
+      setUser(result.user);
+    } catch (error) {
+      console.error("Microsoft sign-in error:", error);
+      throw error;
+    }
+  };
+
   const logout = async () => {
     try {
       await signOut(auth);
@@ -81,7 +94,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, isAdmin, signInWithGoogle, logout }}
+      value={{
+        user,
+        loading,
+        isAdmin,
+        signInWithGoogle,
+        signInWithMicrosoft,
+        logout,
+      }}
     >
       {children}
     </AuthContext.Provider>

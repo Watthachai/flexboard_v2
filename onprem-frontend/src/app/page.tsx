@@ -38,6 +38,22 @@ const GoogleColorIcon = () => (
   </svg>
 );
 
+// Microsoft Icon
+const MicrosoftIcon = () => (
+  <svg
+    width="20"
+    height="20"
+    viewBox="0 0 21 21"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <rect width="10" height="10" fill="#F25022" />
+    <rect x="11" width="10" height="10" fill="#7FBA00" />
+    <rect y="11" width="10" height="10" fill="#00A4EF" />
+    <rect x="11" y="11" width="10" height="10" fill="#FFB900" />
+  </svg>
+);
+
 export default function LoginPage() {
   const router = useRouter();
   const { user, loading: authLoading, signInWithGoogle } = useAuth();
@@ -51,16 +67,24 @@ export default function LoginPage() {
 
   // Check if user already has tenant and is authenticated
   useEffect(() => {
-    if (!authLoading && user) {
-      const tenantId = localStorage.getItem("tenantId");
-      if (tenantId) {
-        // User already has tenant, redirect to dashboard
-        router.push("/dashboard");
-      } else {
-        // User is logged in but no tenant, show invite code screen
-        setStep("invite");
+    const checkTenant = async () => {
+      if (!authLoading && user) {
+        // ตรวจสอบ custom claims จาก Firebase token
+        const tokenResult = await user.getIdTokenResult();
+        const tenantId = tokenResult.claims.tenantId as string | undefined;
+
+        if (tenantId) {
+          // User already has tenant from custom claims, save to localStorage and redirect
+          localStorage.setItem("tenantId", tenantId);
+          router.push("/dashboard");
+        } else {
+          // User is logged in but no tenant, show invite code screen
+          setStep("invite");
+        }
       }
-    }
+    };
+
+    checkTenant();
   }, [user, authLoading, router]);
 
   // Remove auto-redirect - user chooses auth method first
@@ -215,21 +239,39 @@ export default function LoginPage() {
                     Sign in with your social account
                   </p>
                 </div>
-                <Button
-                  variant="outline"
-                  className="w-full h-12 border-2 border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-300 font-medium"
-                  onClick={handleGoogleSignIn}
-                  disabled={isGoogleLoading}
-                >
-                  {isGoogleLoading ? (
-                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  ) : (
-                    <GoogleColorIcon />
-                  )}
-                  <span className="ml-3">
-                    {isGoogleLoading ? "Signing in..." : "Continue with Google"}
-                  </span>
-                </Button>
+
+                <div className="space-y-3">
+                  <Button
+                    variant="outline"
+                    className="w-full h-12 border-2 border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-300 font-medium"
+                    onClick={handleGoogleSignIn}
+                    disabled={isGoogleLoading}
+                  >
+                    {isGoogleLoading ? (
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    ) : (
+                      <GoogleColorIcon />
+                    )}
+                    <span className="ml-3">
+                      {isGoogleLoading
+                        ? "Signing in..."
+                        : "Continue with Google"}
+                    </span>
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    className="w-full h-12 border-2 border-gray-200 bg-white text-gray-400 cursor-not-allowed relative"
+                    disabled
+                  >
+                    <MicrosoftIcon />
+                    <span className="ml-3">Continue with Microsoft</span>
+                    <span className="absolute top-0 right-2 text-[10px] bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-semibold">
+                      Coming Soon
+                    </span>
+                  </Button>
+                </div>
+
                 <p className="mt-4 text-xs text-gray-500 text-center">
                   We will not post to any of your accounts without asking first
                 </p>

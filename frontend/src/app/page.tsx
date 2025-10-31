@@ -9,19 +9,46 @@ import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
-// Simple Google Icon - Uses currentColor for styling
+// Google Color Icon - สีสันเหมือน Google จริงๆ
 const GoogleIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="20"
+    height="20"
+    viewBox="0 0 533.5 544.3"
+  >
+    <path
+      d="M533.5 278.4c0-18.5-1.5-37.1-4.7-55.3H272.1v104.8h147c-6.1 33.8-25.7 63.7-54.4 82.7v68h87.7c51.5-47.4 81.1-117.4 81.1-200.2z"
+      fill="#4285f4"
+    />
+    <path
+      d="M272.1 544.3c73.4 0 135.3-24.1 180.4-65.7l-87.7-68c-24.4 16.6-55.9 26-92.6 26-71 0-131.2-47.9-152.8-112.3H28.9v70.1c46.2 91.9 140.3 149.9 243.2 149.9z"
+      fill="#34a853"
+    />
+    <path
+      d="M119.3 324.3c-11.4-33.8-11.4-70.4 0-104.2V150H28.9c-38.6 76.9-38.6 167.5 0 244.4l90.4-70.1z"
+      fill="#fbbc04"
+    />
+    <path
+      d="M272.1 107.7c38.8-.6 76.3 14 104.4 40.8l77.7-77.7C405 24.6 339.7-.8 272.1 0 169.2 0 75.1 58 28.9 150l90.4 70.1c21.5-64.5 81.8-112.4 152.8-112.4z"
+      fill="#ea4335"
+    />
+  </svg>
+);
+
+// Microsoft Icon
+const MicrosoftIcon = () => (
   <svg
     width="20"
     height="20"
-    viewBox="0 0 24 24"
-    fill="currentColor"
+    viewBox="0 0 21 21"
+    fill="none"
     xmlns="http://www.w3.org/2000/svg"
   >
-    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+    <rect width="10" height="10" fill="#F25022" />
+    <rect x="11" width="10" height="10" fill="#7FBA00" />
+    <rect y="11" width="10" height="10" fill="#00A4EF" />
+    <rect x="11" y="11" width="10" height="10" fill="#FFB900" />
   </svg>
 );
 
@@ -102,7 +129,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-4xl shadow-lg">
         <CardContent className="p-0">
           <div className="grid grid-cols-1 md:grid-cols-2">
-            {/* Google Sign In */}
+            {/* Google & Microsoft Sign In */}
             <div className="p-8 flex flex-col justify-center">
               <div className="mb-6">
                 <h2 className="text-2xl font-bold text-gray-900 mb-2">
@@ -113,22 +140,37 @@ export default function LoginPage() {
                 </p>
               </div>
 
-              <Button
-                variant="primary"
-                size="lg"
-                className="w-full h-12 font-semibold flex items-center justify-center gap-2"
-                onClick={handleGoogleSignIn}
-                disabled={googleLoading}
-              >
-                {googleLoading ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                ) : (
-                  <GoogleIcon />
-                )}
-                <span>
-                  {googleLoading ? "Signing in..." : "Continue with Google"}
-                </span>
-              </Button>
+              <div className="space-y-3">
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="w-full h-12 font-semibold flex items-center justify-center gap-2 border-2 bg-white hover:bg-gray-50 text-gray-700"
+                  onClick={handleGoogleSignIn}
+                  disabled={googleLoading}
+                >
+                  {googleLoading ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <GoogleIcon />
+                  )}
+                  <span>
+                    {googleLoading ? "Signing in..." : "Continue with Google"}
+                  </span>
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="w-full h-12 font-semibold flex items-center justify-center gap-2 border-2 text-gray-400 cursor-not-allowed relative"
+                  disabled
+                >
+                  <MicrosoftIcon />
+                  <span>Continue with Microsoft</span>
+                  <span className="absolute top-0 right-2 text-[10px] bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-semibold">
+                    Coming Soon
+                  </span>
+                </Button>
+              </div>
 
               <p className="mt-4 text-xs text-gray-500">
                 We will not post to any of your accounts without asking first
