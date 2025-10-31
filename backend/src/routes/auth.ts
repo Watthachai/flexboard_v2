@@ -45,6 +45,23 @@ authRouter.post(
           });
         }
 
+        // 🆕 ตรวจสอบ allowedDomains
+        if (inviteData.allowedDomains && inviteData.allowedDomains.length > 0) {
+          const userDomain = user.email.split("@")[1];
+          const isAllowed = inviteData.allowedDomains.some((domain: string) =>
+            userDomain.toLowerCase().endsWith(domain.toLowerCase())
+          );
+
+          if (!isAllowed) {
+            return res.status(403).json({
+              error: "Email domain not allowed",
+              message: `This invite code is restricted to: ${inviteData.allowedDomains.join(
+                ", "
+              )}`,
+            });
+          }
+        }
+
         // ตรวจสอบว่าหมดอายุหรือยัง
         if (
           inviteData.expiresAt &&

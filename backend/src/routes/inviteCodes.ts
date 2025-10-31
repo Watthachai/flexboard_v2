@@ -45,12 +45,15 @@ const CreateInviteCodeSchema = z.object({
   role: z.enum(["admin", "sales", "viewer"]),
   maxUses: z.number().int().min(1).optional(),
   expiresAt: z.string().optional(), // ISO date string
+  allowedDomains: z.array(z.string()).optional(), // เช่น ["xxx.co.th", "yyy.com"]
+  description: z.string().optional(),
 });
 
 const UpdateInviteCodeSchema = z.object({
   isActive: z.boolean().optional(),
   maxUses: z.number().int().min(1).optional(),
   description: z.string().optional(),
+  allowedDomains: z.array(z.string()).optional(),
 });
 
 // ===== Routes =====
@@ -154,6 +157,8 @@ router.post("/", authenticateUser, requireAdmin, async (req, res) => {
       createdBy: user.uid,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       expiresAt,
+      allowedDomains: validated.allowedDomains || null,
+      description: validated.description || null,
     };
 
     await db.collection("globalInviteCodes").doc(code).set(inviteCodeData);

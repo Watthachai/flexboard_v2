@@ -51,6 +51,7 @@ type InviteCode = {
   usedCount: number;
   expiresAt: string | null;
   isActive: boolean;
+  allowedDomains?: string[] | null;
 };
 
 type Tenant = {
@@ -84,6 +85,20 @@ const CreateCodeModal = ({
   const [role, setRole] = useState("viewer");
   const [maxUses, setMaxUses] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
+  const [allowedDomains, setAllowedDomains] = useState("");
+
+  // 🆕 Preview extracted domains
+  const extractedDomains = allowedDomains
+    .split(/[,\n]/)
+    .map((item) => {
+      const trimmed = item.trim();
+      if (trimmed.includes("@")) {
+        const parts = trimmed.split("@");
+        return parts[1] || "";
+      }
+      return trimmed;
+    })
+    .filter((d) => d.length > 0);
 
   useEffect(() => {
     if (open) {
@@ -93,6 +108,7 @@ const CreateCodeModal = ({
       setRole("viewer");
       setMaxUses("");
       setExpiresAt("");
+      setAllowedDomains("");
       setIsNewTenant(false);
 
       // Fetch tenants
@@ -146,6 +162,26 @@ const CreateCodeModal = ({
     };
     if (maxUses) payload.maxUses = parseInt(maxUses, 10);
     if (expiresAt) payload.expiresAt = new Date(expiresAt).toISOString();
+    if (allowedDomains) {
+      // แยก domains ด้วย comma หรือ newline และ auto-extract domain จาก email
+      const domains = allowedDomains
+        .split(/[,\n]/)
+        .map((item) => {
+          const trimmed = item.trim();
+          // ถ้ามี @ แสดงว่าเป็น email เต็ม -> เอาแค่ domain
+          if (trimmed.includes("@")) {
+            const parts = trimmed.split("@");
+            return parts[1] || "";
+          }
+          // ถ้าไม่มี @ แสดงว่าเป็น domain อยู่แล้ว
+          return trimmed;
+        })
+        .filter((d) => d.length > 0);
+
+      if (domains.length > 0) {
+        payload.allowedDomains = domains;
+      }
+    }
 
     try {
       const result = await createInviteCode(payload);
@@ -266,6 +302,52 @@ const CreateCodeModal = ({
                 setExpiresAt((e.target as HTMLInputElement).value)
               }
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="allowed-domains">Allowed Domains (Optional)</Label>
+            <Input
+              id="allowed-domains"
+              type="text"
+              value={allowedDomains}
+              onInput={(e) =>
+                setAllowedDomains((e.target as HTMLInputElement).value)
+              }
+              placeholder="e.g. xxx@company.com, user@example.co.th หรือ company.com, example.co.th"
+            />
+            <p className="text-xs text-muted-foreground">
+              💡 <strong>ใส่ได้ 2 แบบ:</strong>
+              <br />
+              1. <strong>Email เต็ม:</strong> xxx@digitalvalue.co.th,
+              abc@pvs.co.th → ระบบจะ auto สกัดเป็น digitalvalue.co.th, pvs.co.th
+              <br />
+              2. <strong>Domain เฉย:</strong> digitalvalue.co.th, pvs.co.th →
+              ใช้ได้เลย
+              <br />
+              <span className="text-yellow-600">
+                ⚠️ หากไม่ระบุ = อนุญาตทุก email domain
+              </span>
+            </p>
+
+            {/* 🆕 Preview Section */}
+            {extractedDomains.length > 0 && (
+              <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                <p className="text-xs font-semibold text-blue-900 mb-2">
+                  🔍 Preview - จะอนุญาติ domain ดังต่อไปนี้:
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {extractedDomains.map((domain, idx) => (
+                    <Badge
+                      key={idx}
+                      variant="secondary"
+                      className="bg-blue-100 text-blue-700 border-blue-300"
+                    >
+                      @{domain}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <DialogFooter>
@@ -454,6 +536,7 @@ const InviteCodesClientPage = ({ onLogout }: { onLogout: () => void }) => {
                     <TableHead>Tenant</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Usage</TableHead>
+                    <TableHead>Allowed Domains</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Expires</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -462,7 +545,7 @@ const InviteCodesClientPage = ({ onLogout }: { onLogout: () => void }) => {
                 <TableBody>
                   {codes.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="h-24 text-center">
+                      <TableCell colSpan={8} className="h-24 text-center">
                         No codes found.
                       </TableCell>
                     </TableRow>
@@ -483,6 +566,26 @@ const InviteCodesClientPage = ({ onLogout }: { onLogout: () => void }) => {
                         </TableCell>
                         <TableCell>
                           {code.usedCount} / {code.maxUses || "∞"}
+                        </TableCell>
+                        <TableCell>
+                          {code.allowedDomains &&
+                          code.allowedDomains.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {code.allowedDomains.map((domain, idx) => (
+                                <Badge
+                                  key={idx}
+                                  variant="secondary"
+                                  className="text-xs"
+                                >
+                                  @{domain}
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">
+                              All domains
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell>{getStatusBadge(code)}</TableCell>
                         <TableCell>
