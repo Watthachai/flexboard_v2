@@ -55,11 +55,13 @@ authRouter.post(
           });
         }
 
-        // ตรวจสอบจำนวนการใช้งาน
-        if (inviteData.usedCount >= inviteData.maxUses) {
-          return res.status(400).json({
-            error: "Invite code has reached maximum usage",
-          });
+        // ตรวจสอบจำนวนการใช้งาน (เฉพาะถ้ามี maxUses กำหนดไว้)
+        if (inviteData.maxUses !== null && inviteData.maxUses !== undefined) {
+          if (inviteData.usedCount >= inviteData.maxUses) {
+            return res.status(400).json({
+              error: "Invite code has reached maximum usage",
+            });
+          }
         }
 
         // เพิ่ม usedCount

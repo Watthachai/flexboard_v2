@@ -2,15 +2,49 @@
  * Centralized API Client for communicating with backend
  */
 
+import { getAuth } from "firebase/auth";
+
 const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001";
+  process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
 
 interface FetchOptions extends RequestInit {
   timeout?: number;
 }
 
+/**
+ * Get Firebase ID token for authenticated requests
+ */
+async function getAuthToken(): Promise<string | null> {
+  const auth = getAuth();
+  const user = auth.currentUser;
+
+  if (!user) {
+    return null;
+  }
+
+  try {
+    // Force refresh to get latest claims
+    return await user.getIdToken(true);
+  } catch (error) {
+    console.error("Failed to get auth token:", error);
+    return null;
+  }
+}
+
 async function fetcher<T>(url: string, options: FetchOptions = {}): Promise<T> {
   const { timeout = 10000, ...fetchOptions } = options;
+
+  // Get authentication token
+  const token = await getAuthToken();
+
+  // Add Authorization header if token exists
+  const headers: Record<string, string> = {
+    ...(fetchOptions.headers as Record<string, string>),
+  };
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -18,11 +52,13 @@ async function fetcher<T>(url: string, options: FetchOptions = {}): Promise<T> {
   try {
     const response = await fetch(url, {
       ...fetchOptions,
+      headers,
       signal: controller.signal,
     });
 
     if (!response.ok) {
-      throw new Error(`API Error: ${response.status} ${response.statusText}`);
+      const errorText = await response.text().catch(() => response.statusText);
+      throw new Error(`API Error: ${response.status} - ${errorText}`);
     }
 
     return await response.json();
@@ -34,8 +70,13 @@ async function fetcher<T>(url: string, options: FetchOptions = {}): Promise<T> {
 /**
  * Fetch configuration from backend
  */
-export async function getBackendConfig(): Promise<any> {
-  return fetcher(`${BACKEND_URL}/api/config`);
+export async function getBackendConfig(tenantId?: string): Promise<any> {
+  if (!tenantId) {
+    throw new Error("tenantId is required");
+  }
+  return fetcher(
+    `${BACKEND_URL}/api/tenants/${encodeURIComponent(tenantId)}/config`
+  );
 }
 
 /**
@@ -87,4 +128,15 @@ export async function postData<T>(
  */
 export async function getData<T>(endpoint: string): Promise<T> {
   return fetcher(`${BACKEND_URL}${endpoint}`);
+}
+
+/**
+ * Get invite code details (for tenant association)
+ */
+export async function getInviteCodeDetails(
+  code: string
+): Promise<{ tenantId: string; code: string; isActive: boolean }> {
+  return fetcher<{ tenantId: string; code: string; isActive: boolean }>(
+    `${BACKEND_URL}/api/invite-codes/${encodeURIComponent(code)}`
+  );
 }

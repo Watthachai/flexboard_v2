@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   output: "export",
   reactCompiler: true,
   images: {
-    unoptimized: false,
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: "https",

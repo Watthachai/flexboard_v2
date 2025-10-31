@@ -1,133 +1,93 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Loader2, LayoutDashboard, Info } from "lucide-react";
 
 interface DashboardConfig {
   tenantId: string;
   name: string;
-  dashboards: any[];
+  dashboards?: any[];
 }
 
 export default function DashboardPage() {
   const [config, setConfig] = useState<DashboardConfig | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const router = useRouter();
 
   useEffect(() => {
-    const loadConfig = async () => {
+    const loadConfig = () => {
       try {
-        // Check if user is authenticated
         const tenantId = localStorage.getItem("tenantId");
-        if (!tenantId) {
-          router.push("/");
-          return;
-        }
-
-        // Load config from localStorage first
         const storedConfig = localStorage.getItem("dashboardConfig");
+
         if (storedConfig) {
-          setConfig(JSON.parse(storedConfig));
+          const parsedConfig = JSON.parse(storedConfig);
+          setConfig(parsedConfig);
+        } else if (tenantId) {
+          // Create basic config if only tenantId exists
+          setConfig({
+            tenantId: tenantId,
+            name: "Dashboard",
+            dashboards: [],
+          });
         }
-
-        // Optionally refresh from server
-        const response = await fetch(`/api/config?tenantId=${tenantId}`);
-        if (!response.ok) {
-          throw new Error("Failed to load dashboard");
-        }
-
-        const freshConfig = await response.json();
-        setConfig(freshConfig);
-        localStorage.setItem("dashboardConfig", JSON.stringify(freshConfig));
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "Failed to load dashboard"
-        );
+        console.error("Failed to load dashboard:", err);
       } finally {
         setLoading(false);
       }
     };
 
     loadConfig();
-  }, [router]);
-
-  const handleLogout = () => {
-    localStorage.removeItem("tenantId");
-    localStorage.removeItem("inviteCode");
-    localStorage.removeItem("dashboardConfig");
-
-    // Clear cookie
-    document.cookie = "tenantId=; path=/; max-age=0";
-
-    router.push("/");
-  };
+  }, []);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <p className="text-lg text-gray-600">Loading dashboard...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <p className="text-red-600">{error}</p>
-          <button
-            onClick={() => router.push("/")}
-            className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
-          >
-            Back to Login
-          </button>
-        </div>
+      <div className="flex h-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
   if (!config) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p>No configuration found</p>
+      <div className="flex h-full items-center justify-center p-4">
+        <Alert>
+          <Info className="h-4 w-4" />
+          <AlertDescription>No configuration found</AlertDescription>
+        </Alert>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="space-y-6">
       {/* Header */}
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">{config.name}</h1>
-            <p className="text-gray-600">Tenant ID: {config.tenantId}</p>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-          >
-            Logout
-          </button>
-        </div>
-      </header>
+      <div className="flex flex-col gap-2 border-b pb-4">
+        <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">
+          {config.name}
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Tenant ID:{" "}
+          <span className="inline-flex items-center rounded bg-muted px-2 py-0.5 font-mono text-xs">
+            {config.tenantId}
+          </span>
+        </p>
+      </div>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        {config.dashboards && config.dashboards.length > 0 ? (
-          <div className="space-y-6">
-            {config.dashboards.map((dashboard: any) => (
-              <div
-                key={dashboard.id}
-                className="bg-white rounded-lg shadow p-6"
-              >
-                <h2 className="text-2xl font-bold text-gray-900 mb-4">
+      {/* Dashboard Content */}
+      {config.dashboards && config.dashboards.length > 0 ? (
+        <div className="space-y-6">
+          {config.dashboards.map((dashboard: any) => (
+            <Card key={dashboard.id}>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <LayoutDashboard className="h-5 w-5" />
                   {dashboard.title}
-                </h2>
-
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
                 {/* Widgets Grid */}
                 <div
                   className={`grid gap-4 ${
@@ -137,32 +97,39 @@ export default function DashboardPage() {
                   }`}
                 >
                   {dashboard.widgets?.map((widget: any) => (
-                    <div
-                      key={widget.id}
-                      className="border rounded-lg p-4 bg-gray-50"
-                    >
-                      <h3 className="font-semibold text-gray-900 mb-2">
-                        {widget.type}
-                      </h3>
-                      <p className="text-sm text-gray-600">
-                        {widget.chartType || widget.id}
-                      </p>
-                      {/* Widget will be rendered here */}
-                      <div className="mt-4 h-64 bg-white rounded border border-gray-200 flex items-center justify-center">
-                        <p className="text-gray-500">Widget: {widget.id}</p>
-                      </div>
-                    </div>
+                    <Card key={widget.id}>
+                      <CardHeader>
+                        <CardTitle className="text-base">
+                          {widget.type}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="h-64 flex items-center justify-center bg-muted rounded-md">
+                          <p className="text-sm text-muted-foreground">
+                            Widget: {widget.id}
+                          </p>
+                        </div>
+                      </CardContent>
+                    </Card>
                   ))}
                 </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="bg-white rounded-lg shadow p-6 text-center">
-            <p className="text-gray-600">No dashboards configured yet</p>
-          </div>
-        )}
-      </main>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <Card className="border-dashed">
+          <CardContent className="flex min-h-[400px] flex-col items-center justify-center text-center">
+            <LayoutDashboard className="mb-4 h-12 w-12 text-muted-foreground" />
+            <h3 className="mb-2 text-lg font-semibold">
+              No dashboards configured yet
+            </h3>
+            <p className="max-w-sm text-sm text-muted-foreground">
+              Create your first dashboard to get started
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

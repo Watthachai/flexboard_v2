@@ -79,37 +79,41 @@ router.get(
  * GET /api/tenants/:tenantId/config
  * Fetch configuration for a specific tenant
  */
-router.get("/:tenantId/config", async (req: Request, res: Response) => {
-  try {
-    const { tenantId } = req.params;
+router.get(
+  "/:tenantId/config",
+  authenticateUser,
+  async (req: Request, res: Response) => {
+    try {
+      const { tenantId } = req.params;
 
-    if (!tenantId) {
-      return res.status(400).json({ error: "tenantId is required" });
+      if (!tenantId) {
+        return res.status(400).json({ error: "tenantId is required" });
+      }
+
+      const tenantDoc = await db.collection("tenants").doc(tenantId).get();
+
+      if (!tenantDoc.exists) {
+        return res.status(404).json({ error: "Tenant not found" });
+      }
+
+      const tenantData = tenantDoc.data();
+      const config = tenantData?.config || {};
+
+      res.json({
+        tenantId,
+        name: tenantData?.name || "",
+        description: tenantData?.description || "",
+        ...config,
+      });
+    } catch (error) {
+      console.error("Error fetching config:", error);
+      res.status(500).json({
+        error: "Failed to fetch configuration",
+        details: error instanceof Error ? error.message : "Unknown error",
+      });
     }
-
-    const tenantDoc = await db.collection("tenants").doc(tenantId).get();
-
-    if (!tenantDoc.exists) {
-      return res.status(404).json({ error: "Tenant not found" });
-    }
-
-    const tenantData = tenantDoc.data();
-    const config = tenantData?.config || {};
-
-    res.json({
-      tenantId,
-      name: tenantData?.name || "",
-      description: tenantData?.description || "",
-      ...config,
-    });
-  } catch (error) {
-    console.error("Error fetching config:", error);
-    res.status(500).json({
-      error: "Failed to fetch configuration",
-      details: error instanceof Error ? error.message : "Unknown error",
-    });
   }
-});
+);
 
 /**
  * POST /api/tenants/:tenantId/config
