@@ -10,13 +10,7 @@ import {
   deleteTenant,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
-  CardDescription,
-} from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -26,14 +20,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableHeader,
-  TableRow,
-  TableHead,
-  TableBody,
-  TableCell,
-} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Edit2, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -165,21 +151,19 @@ export default function TenantsPage() {
     document.cookie = `tenantId=${tenantId}; path=/; max-age=${
       7 * 24 * 60 * 60
     }`;
-    router.push("/admin/dashboard-builder");
+    router.push(`/tenants/${tenantId}/dashboards`);
   };
 
   return (
     <>
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Tenants</h1>
-        <p className="text-gray-600 mt-2">
-          Manage your organization&apos;s tenants and dashboards
-        </p>
-      </div>
-
-      {/* Create Button */}
-      <div className="mb-6">
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Tenants</h1>
+          <p className="text-gray-600 mt-2">
+            Manage your client organizations and their dashboards
+          </p>
+        </div>
         <Button
           onClick={() => {
             setEditingId(null);
@@ -189,108 +173,101 @@ export default function TenantsPage() {
           className="gap-2"
         >
           <Plus className="h-4 w-4" />
-          Create Tenant
+          Add New Tenant
         </Button>
       </div>
 
-      {/* Tenants Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Your Tenants</CardTitle>
-          <CardDescription>
-            Select a tenant to view and manage dashboards
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading && tenants.length === 0 ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-            </div>
-          ) : tenants.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-gray-500 mb-4">No tenants yet</p>
-              <Button
-                onClick={() => {
-                  setEditingId(null);
-                  setFormData({ name: "", description: "" });
-                  setIsDialogOpen(true);
-                }}
-                className="gap-2"
-              >
-                <Plus className="h-4 w-4" />
-                Create Your First Tenant
-              </Button>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {tenants.map((tenant) => (
-                    <TableRow key={tenant.id}>
-                      <TableCell className="font-medium">
-                        {tenant.name}
-                      </TableCell>
-                      <TableCell className="text-sm text-gray-600">
-                        {tenant.description || "-"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            tenant.status === "active" ? "default" : "outline"
-                          }
-                        >
-                          {tenant.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-gray-600">
-                        {new Date(tenant.createdAt).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleSelectTenant(tenant.id)}
-                            className="text-blue-600 hover:text-blue-700"
-                          >
-                            Open
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleEdit(tenant)}
-                            disabled={loading}
-                          >
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleDelete(tenant.id)}
-                            disabled={loading}
-                            className="text-red-600 hover:text-red-700"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Tenants Grid */}
+      {loading && tenants.length === 0 ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        </div>
+      ) : tenants.length === 0 ? (
+        <Card>
+          <CardContent className="text-center py-12">
+            <p className="text-gray-500 mb-4">No tenants yet</p>
+            <Button
+              onClick={() => {
+                setEditingId(null);
+                setFormData({ name: "", description: "" });
+                setIsDialogOpen(true);
+              }}
+              className="gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              Create Your First Tenant
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {tenants.map((tenant) => (
+            <Card
+              key={tenant.id}
+              className="hover:shadow-lg transition-shadow cursor-pointer"
+              onClick={() => handleSelectTenant(tenant.id)}
+            >
+              <CardHeader>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <CardTitle className="text-xl mb-1">
+                      {tenant.name}
+                    </CardTitle>
+                    <p className="text-sm text-gray-500">@{tenant.id}</p>
+                  </div>
+                  <Badge
+                    variant={tenant.status === "active" ? "default" : "outline"}
+                  >
+                    {tenant.status}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {tenant.description && (
+                    <p className="text-sm text-gray-600">
+                      {tenant.description}
+                    </p>
+                  )}
+                  <div className="flex items-center justify-between text-sm text-gray-500">
+                    <span>0 dashboards</span>
+                    <span>
+                      Created {new Date(tenant.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                </div>
+              </CardContent>
+              <CardContent className="pt-0 border-t">
+                <div className="flex items-center justify-end gap-2 pt-3">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEdit(tenant);
+                    }}
+                    disabled={loading}
+                  >
+                    <Edit2 className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(tenant.id);
+                    }}
+                    disabled={loading}
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {/* Create/Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>

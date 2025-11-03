@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "export",
+  // output: "export", // ❌ Removed - incompatible with dynamic routes
   reactCompiler: true,
   images: {
     unoptimized: true,
