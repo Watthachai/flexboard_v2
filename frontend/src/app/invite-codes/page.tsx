@@ -209,6 +209,23 @@ const CreateCodeModal = ({
               <p className="text-sm text-muted-foreground">
                 Loading tenants...
               </p>
+            ) : tenants.length === 0 ? (
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  No tenants available. You need to create a tenant first.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    onOpenChange(false);
+                    window.location.href = "/tenants";
+                  }}
+                >
+                  Go to Tenants Page
+                </Button>
+              </div>
             ) : (
               <Select
                 onValueChange={handleTenantSelect}

@@ -130,11 +130,27 @@ router.get("/:code", authenticateUser, requireAdmin, async (req, res) => {
 /**
  * POST /api/invite-codes
  * สร้าง invite code ใหม่ (Super Admin สามารถสร้างให้ tenant ใดก็ได้)
+ * ถ้า tenant ยังไม่มีใน database จะสร้างให้อัตโนมัติ
  */
 router.post("/", authenticateUser, requireAdmin, async (req, res) => {
   try {
     const user = (req as any).user;
     const validated = CreateInviteCodeSchema.parse(req.body);
+
+    // ตรวจสอบว่า tenant มีอยู่แล้วหรือยัง ถ้ายังไม่มีให้สร้างใหม่
+    const tenantRef = db.doc(`tenants/${validated.tenantId}`);
+    const tenantDoc = await tenantRef.get();
+
+    if (!tenantDoc.exists) {
+      // สร้าง tenant document ใหม่
+      await tenantRef.set({
+        name: validated.tenantName,
+        description: "",
+        status: "active",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdBy: user.uid,
+      });
+    }
 
     // Generate unique code
     const code = await generateUniqueCode();

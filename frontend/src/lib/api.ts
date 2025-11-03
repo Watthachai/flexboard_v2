@@ -15,13 +15,18 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
   // Get current user and token
   const auth = getAuth();
   const user = auth.currentUser;
-  
+
+  console.log("🔵 [API] Fetcher called:", url);
+  console.log("  User:", user?.email);
+
   if (!user) {
+    console.error("❌ [API] Not authenticated");
     throw new Error("Not authenticated");
   }
 
   // Force refresh token to get latest custom claims (isSuperAdmin, isAdmin)
   const token = await user.getIdToken(true);
+  console.log("  Token (first 50 chars):", token.substring(0, 50) + "...");
 
   const response = await fetch(`${BACKEND_URL}${url}`, {
     ...options,
@@ -32,14 +37,19 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
     },
   });
 
+  console.log("  Response status:", response.status);
+
   if (!response.ok) {
     const errorText = await response.text();
+    console.error("❌ [API] Error response:", errorText);
     throw new Error(
       `API Error (${response.status}): ${errorText || response.statusText}`
     );
   }
 
-  return await response.json();
+  const data = await response.json();
+  console.log("✅ [API] Success:", data);
+  return data;
 }
 
 /**

@@ -73,6 +73,7 @@ export const db = admin.firestore();
 import { authRouter } from "./routes/auth";
 import inviteCodesRouter from "./routes/inviteCodes";
 import configRouter from "./routes/config";
+import { tenantsRouter } from "./routes/tanents"; // Fixed: Import tenantsRouter
 import adminUIRouter from "./routes/adminUIReact"; // ใช้ React version
 
 // ===== Express App =====
@@ -135,7 +136,7 @@ app.get("/health", (req: Request, res: Response) => {
 
 // ===== API Routes =====
 app.use("/api/auth", authRouter);
-app.use("/api/tenants", configRouter);
+app.use("/api/tenants", tenantsRouter); // Fixed: Use tenantsRouter instead of configRouter
 
 // Invite Codes Route
 app.use("/api/invite-codes", inviteCodesRouter);
@@ -160,7 +161,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 const PORT = process.env.PORT || 5001;
 
 app.listen(PORT, () => {
-  console.log("\n🚀 NAPP Backend Server is running!");
+  console.log("\n🚀FlexB Backend Server is running!");
   console.log(`📍 Server: http://localhost:${PORT}`);
   console.log(`🏥 Health: http://localhost:${PORT}/health`);
   console.log(`🔐 API: http://localhost:${PORT}/api`);

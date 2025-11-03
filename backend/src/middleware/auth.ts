@@ -64,15 +64,6 @@ export const authenticateUser = async (
       },
     };
 
-    console.log("✅ User authenticated:", {
-      uid: decodedToken.uid,
-      email: decodedToken.email,
-      role: decodedToken.role,
-      tenantId: decodedToken.tenantId,
-      isAdmin: (req as any).user.isAdmin,
-      isSuperAdmin: (req as any).user.isSuperAdmin,
-    });
-
     next();
   } catch (error: any) {
     console.error("Auth error:", error.message);
@@ -129,27 +120,14 @@ export const requireAdmin = (
 ): any => {
   const user = (req as any).user;
 
-  console.log("🔐 Checking admin access:", {
-    email: user?.email,
-    isAdmin: user?.isAdmin,
-    isSuperAdmin: user?.isSuperAdmin,
-    role: user?.role,
-    tenantId: user?.tenantId,
-  });
-
-  // Allow if super admin (no tenant required)
   if (user?.isSuperAdmin === true || user?.isAdmin === true) {
-    console.log("✅ Access granted: Super Admin");
     return next();
   }
 
-  // Allow if tenant admin
   if (user?.role === "admin" && user?.tenantId) {
-    console.log("✅ Access granted: Tenant Admin");
     return next();
   }
 
-  console.log("❌ Access denied: Not an admin");
   return res.status(403).json({
     error: "Forbidden: Admin access required",
     message: "Only admins can access this resource",

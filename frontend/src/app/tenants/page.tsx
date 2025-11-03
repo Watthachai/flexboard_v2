@@ -71,10 +71,12 @@ export default function TenantsPage() {
 
     setLoading(true);
     try {
+      console.log("🔵 Loading tenants...");
       const data = await getAllTenants();
+      console.log("✅ Tenants loaded:", data);
       setTenants(data);
     } catch (err) {
-      console.error("Error loading tenants:", err);
+      console.error("❌ Error loading tenants:", err);
       toast.error("Failed to load tenants");
     } finally {
       setLoading(false);

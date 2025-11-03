@@ -421,14 +421,14 @@ export default function LoginPage() {
                   <Input
                     id="code"
                     type="text"
-                    placeholder="TENANT_UUID-XXXXX"
+                    placeholder="XXXXXXX"
                     value={code}
                     onChange={(e) => setCode(e.target.value.toUpperCase())}
                     disabled={loading}
                     className="h-12 text-center font-mono text-lg tracking-wider"
                   />
                   <p className="text-xs text-gray-500 text-center">
-                    Format: TENANT_UUID-XXXXX
+                    Format: XXXXXXX
                   </p>
                 </div>
 
