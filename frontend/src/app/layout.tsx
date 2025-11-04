@@ -18,8 +18,17 @@ const geistMono = Geist_Mono({
 function LayoutContent({ children }: { children: React.ReactNode }) {
   const { user, isAdmin, loading } = useAuth();
 
+  // Show loading spinner while auth is loading
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" />
+      </div>
+    );
+  }
+
   // Show sidebar only if user is logged in and is admin
-  const showSidebar = !loading && user && isAdmin;
+  const showSidebar = user && isAdmin;
 
   if (showSidebar) {
     return (

@@ -256,3 +256,258 @@ export async function removeUserFromTenant(userId: string): Promise<any> {
     body: JSON.stringify({ userId }),
   });
 }
+
+// ===== DASHBOARD APIs =====
+
+/**
+ * Get all dashboards for a tenant
+ */
+export async function getDashboards(tenantId: string): Promise<any> {
+  return fetcher(`/api/tenants/${tenantId}/dashboards`);
+}
+
+/**
+ * Get specific dashboard with config
+ */
+export async function getDashboardById(
+  tenantId: string,
+  dashboardId: string
+): Promise<any> {
+  return fetcher(`/api/tenants/${tenantId}/dashboards/${dashboardId}`);
+}
+
+/**
+ * Create new dashboard
+ */
+export async function createDashboard(
+  tenantId: string,
+  data: {
+    name: string;
+    description?: string;
+    category?: string;
+    tags?: string[];
+    dataSourceId?: string; // Optional now
+    config: any;
+  }
+): Promise<any> {
+  return fetcher(`/api/tenants/${tenantId}/dashboards`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Update dashboard metadata
+ */
+export async function updateDashboard(
+  tenantId: string,
+  dashboardId: string,
+  data: {
+    name?: string;
+    description?: string;
+    category?: string;
+    tags?: string[];
+    status?: "draft" | "active" | "archived";
+    visibility?: "private" | "public" | "org";
+  }
+): Promise<any> {
+  return fetcher(`/api/tenants/${tenantId}/dashboards/${dashboardId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Delete dashboard
+ */
+export async function deleteDashboard(
+  tenantId: string,
+  dashboardId: string
+): Promise<any> {
+  return fetcher(`/api/tenants/${tenantId}/dashboards/${dashboardId}`, {
+    method: "DELETE",
+  });
+}
+
+/**
+ * Get all versions of a dashboard
+ */
+export async function getDashboardVersions(
+  tenantId: string,
+  dashboardId: string
+): Promise<any> {
+  return fetcher(`/api/tenants/${tenantId}/dashboards/${dashboardId}/versions`);
+}
+
+/**
+ * Get specific version
+ */
+export async function getDashboardVersion(
+  tenantId: string,
+  dashboardId: string,
+  versionId: string
+): Promise<any> {
+  return fetcher(
+    `/api/tenants/${tenantId}/dashboards/${dashboardId}/versions/${versionId}`
+  );
+}
+
+/**
+ * Create new version
+ */
+export async function createDashboardVersion(
+  tenantId: string,
+  dashboardId: string,
+  data: {
+    config: any;
+    changeLog?: string;
+  }
+): Promise<any> {
+  return fetcher(
+    `/api/tenants/${tenantId}/dashboards/${dashboardId}/versions`,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+/**
+ * Activate specific version
+ */
+export async function activateDashboardVersion(
+  tenantId: string,
+  dashboardId: string,
+  versionId: string
+): Promise<any> {
+  return fetcher(
+    `/api/tenants/${tenantId}/dashboards/${dashboardId}/versions/${versionId}/activate`,
+    {
+      method: "PUT",
+    }
+  );
+}
+
+// ===== DATA SOURCE APIs =====
+
+/**
+ * Get all data sources for a tenant
+ */
+export async function getDataSources(tenantId: string): Promise<any> {
+  return fetcher(`/api/tenants/${tenantId}/datasources`);
+}
+
+/**
+ * Get specific data source
+ */
+export async function getDataSourceById(
+  tenantId: string,
+  dataSourceId: string
+): Promise<any> {
+  return fetcher(`/api/tenants/${tenantId}/datasources/${dataSourceId}`);
+}
+
+/**
+ * Create new data source
+ */
+export async function createDataSource(
+  tenantId: string,
+  data: {
+    name: string;
+    type: string;
+    connection: any;
+  }
+): Promise<any> {
+  return fetcher(`/api/tenants/${tenantId}/datasources`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Update data source
+ */
+export async function updateDataSource(
+  tenantId: string,
+  dataSourceId: string,
+  data: {
+    name: string;
+    type: string;
+    connection: any;
+  }
+): Promise<any> {
+  return fetcher(`/api/tenants/${tenantId}/datasources/${dataSourceId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Delete data source
+ */
+export async function deleteDataSource(
+  tenantId: string,
+  dataSourceId: string
+): Promise<any> {
+  return fetcher(`/api/tenants/${tenantId}/datasources/${dataSourceId}`, {
+    method: "DELETE",
+  });
+}
+
+/**
+ * Test data source connection
+ */
+export async function testDataSourceConnection(
+  tenantId: string,
+  data: {
+    type: string;
+    connection: any;
+  }
+): Promise<any> {
+  return fetcher(`/api/tenants/${tenantId}/datasources/test`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Get tables from data source
+ */
+export async function getDataSourceTables(
+  tenantId: string,
+  dataSourceId: string
+): Promise<any> {
+  return fetcher(`/api/tenants/${tenantId}/datasources/${dataSourceId}/tables`);
+}
+
+/**
+ * Get columns from a specific table
+ */
+export async function getDataSourceColumns(
+  tenantId: string,
+  dataSourceId: string,
+  table: string
+): Promise<any> {
+  return fetcher(
+    `/api/tenants/${tenantId}/datasources/${dataSourceId}/columns`,
+    {
+      method: "POST",
+      body: JSON.stringify({ table }),
+    }
+  );
+}
+
+/**
+ * Execute query on data source
+ */
+export async function executeDataSourceQuery(
+  tenantId: string,
+  dataSourceId: string,
+  query: string,
+  limit?: number
+): Promise<any> {
+  return fetcher(`/api/tenants/${tenantId}/datasources/${dataSourceId}/query`, {
+    method: "POST",
+    body: JSON.stringify({ query, limit }),
+  });
+}

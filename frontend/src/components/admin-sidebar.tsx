@@ -5,14 +5,7 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import {
-  Menu,
-  Building2,
-  LayoutDashboard,
-  Mail,
-  Users,
-  LogOut,
-} from "lucide-react";
+import { Menu, Building2, Mail, Users, LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 function SidebarContent({ onClose }: { onClose?: () => void }) {
@@ -34,11 +27,6 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
       label: "Tenants",
       href: "/tenants",
       icon: Building2,
-    },
-    {
-      label: "Dashboard Builder",
-      href: "/dashboard-builder",
-      icon: LayoutDashboard,
     },
     {
       label: "Invite Codes",
