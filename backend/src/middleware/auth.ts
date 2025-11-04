@@ -73,6 +73,7 @@ export const authenticateUser = async (
 
 /**
  * Middleware: Require tenant assignment
+ * Super Admin can access any tenant
  */
 export const requireTenant = (
   req: Request,
@@ -81,6 +82,12 @@ export const requireTenant = (
 ): any => {
   const user = (req as any).user;
 
+  // Super Admin can access any tenant
+  if (user?.isSuperAdmin === true) {
+    return next();
+  }
+
+  // Regular users must have a tenant assigned
   if (!user?.tenantId) {
     return res.status(403).json({
       error: "Forbidden: No tenant assigned",
