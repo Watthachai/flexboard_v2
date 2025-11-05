@@ -24,6 +24,149 @@ interface TestResult {
   error?: string;
 }
 
+interface ColumnInfo {
+  name: string;
+  type: string;
+  nullable?: boolean;
+}
+
+/**
+ * Database Connector Interface
+ */
+interface DatabaseConnector {
+  testConnection(): Promise<TestResult>;
+  getColumns(tableName: string): Promise<ColumnInfo[]>;
+  executeQuery(query: string): Promise<any>;
+}
+
+/**
+ * Get database connector instance
+ */
+export function getDatabaseConnector(
+  type: string,
+  config: ConnectionConfig
+): DatabaseConnector {
+  return {
+    testConnection: () => testDatabaseConnection(type, config),
+    getColumns: (tableName: string) => getTableColumns(type, config, tableName),
+    executeQuery: (query: string) => executeQuery(type, config, query),
+  };
+}
+
+/**
+ * Get columns information for a table
+ */
+async function getTableColumns(
+  type: string,
+  config: ConnectionConfig,
+  tableName: string
+): Promise<ColumnInfo[]> {
+  try {
+    if (type === "mssql") {
+      const sql = await import("mssql");
+      const mssql = sql.default || sql;
+
+      const poolConfig: any = {
+        user: config.username,
+        password: config.password,
+        server: config.host || "localhost",
+        port: config.port || 1433,
+        database: config.database,
+        options: {
+          encrypt: true,
+          trustServerCertificate: true,
+          enableArithAbort: true,
+        },
+        connectionTimeout: 10000,
+        requestTimeout: 10000,
+      };
+
+      const pool = await mssql.connect(poolConfig);
+      const result = await pool.request().query(`
+        SELECT 
+          COLUMN_NAME as name,
+          DATA_TYPE as type,
+          IS_NULLABLE as nullable
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = '${tableName}'
+        ${config.schema ? `AND TABLE_SCHEMA = '${config.schema}'` : ""}
+        ORDER BY ORDINAL_POSITION
+      `);
+
+      await pool.close();
+
+      return result.recordset.map((row: any) => ({
+        name: row.name,
+        type: row.type,
+        nullable: row.nullable === "YES",
+      }));
+    } else if (type === "mysql") {
+      const mysql = await import("mysql2/promise");
+
+      const connection = await mysql.createConnection({
+        host: config.host || "",
+        port: config.port || 3306,
+        user: config.username || "",
+        password: config.password || "",
+        database: config.database || "",
+      });
+
+      const [rows] = await connection.execute(
+        `SELECT 
+          COLUMN_NAME as name,
+          DATA_TYPE as type,
+          IS_NULLABLE as nullable
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = ? AND TABLE_SCHEMA = ?
+        ORDER BY ORDINAL_POSITION`,
+        [tableName, config.database]
+      );
+
+      await connection.end();
+
+      return (rows as any[]).map((row: any) => ({
+        name: row.name,
+        type: row.type,
+        nullable: row.nullable === "YES",
+      }));
+    } else if (type === "postgresql") {
+      const { Client } = await import("pg");
+
+      const client = new Client({
+        host: config.host || "",
+        port: config.port || 5432,
+        user: config.username || "",
+        password: config.password || "",
+        database: config.database || "",
+      });
+
+      await client.connect();
+      const result = await client.query(
+        `SELECT 
+          column_name as name,
+          data_type as type,
+          is_nullable as nullable
+        FROM information_schema.columns
+        WHERE table_name = $1
+        ORDER BY ordinal_position`,
+        [tableName]
+      );
+      await client.end();
+
+      return result.rows.map((row: any) => ({
+        name: row.name,
+        type: row.type,
+        nullable: row.nullable === "YES",
+      }));
+    }
+
+    throw new Error(`Unsupported database type: ${type}`);
+  } catch (error: any) {
+    console.error("Error getting columns:", error);
+    throw error;
+  }
+}
+
 /**
  * Test SQL Server (MSSQL) Connection
  */

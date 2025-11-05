@@ -459,16 +459,21 @@ dataSourcesRouter.post(
         return res.status(404).json({ error: "Data source not found" });
       }
 
-      // TODO: Implement actual column fetching from database
-      // For now, return mock columns
-      const mockColumns = [
-        { name: "id", type: "int", nullable: false },
-        { name: "name", type: "varchar", nullable: false },
-        { name: "created_at", type: "datetime", nullable: true },
-        { name: "updated_at", type: "datetime", nullable: true },
-      ];
+      const dataSource = doc.data();
+      if (!dataSource) {
+        return res.status(404).json({ error: "Data source not found" });
+      }
 
-      res.json({ columns: mockColumns });
+      const { type, connection } = dataSource as any;
+
+      // Get columns from database using the connector
+      const { getDatabaseConnector } = await import(
+        "../utils/database-connectors"
+      );
+      const connector = getDatabaseConnector(type, connection);
+      const columns = await connector.getColumns(table);
+
+      res.json({ columns });
     } catch (error: any) {
       console.error("Error fetching columns:", error);
       res.status(500).json({ error: error.message });

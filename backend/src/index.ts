@@ -76,6 +76,7 @@ import configRouter from "./routes/config";
 import { tenantsRouter } from "./routes/tanents"; // Fixed: Import tenantsRouter
 import { dashboardsRouter } from "./routes/dashboards";
 import { dataSourcesRouter } from "./routes/datasources";
+import columnsRouter from "./routes/columns";
 import adminUIRouter from "./routes/adminUIReact"; // ใช้ React version
 
 // ===== Express App =====
@@ -141,6 +142,7 @@ app.use("/api/auth", authRouter);
 app.use("/api/tenants", tenantsRouter); // Fixed: Use tenantsRouter instead of configRouter
 app.use("/api/tenants", dashboardsRouter); // Dashboard routes
 app.use("/api/tenants", dataSourcesRouter); // Data source routes
+app.use("/api", columnsRouter); // Columns routes
 
 // Invite Codes Route
 app.use("/api/invite-codes", inviteCodesRouter);
