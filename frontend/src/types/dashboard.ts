@@ -214,6 +214,7 @@ export interface Dashboard {
   // Data Source
   dataSourceId: string;
   dataSource?: DataSource; // populated
+  selectedTable?: string; // Selected table for this dashboard
 
   // Status
   status: DashboardStatus;
@@ -261,6 +262,8 @@ export interface UpdateDashboardRequest {
   tags?: string[];
   status?: DashboardStatus;
   visibility?: DashboardVisibility;
+  dataSourceId?: string;
+  selectedTable?: string;
 }
 
 export interface CreateVersionRequest {

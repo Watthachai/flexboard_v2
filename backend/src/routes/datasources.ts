@@ -222,7 +222,8 @@ dataSourcesRouter.put(
   async (req: any, res: any) => {
     try {
       const { tenantId, dataSourceId } = req.params;
-      const { name, type, connection, status, availableTables } = req.body;
+      const { name, type, connection, status, availableTables, selectedTable } =
+        req.body;
       const user = req.user;
 
       // Verify user has access (Super Admin can access any tenant)
@@ -267,6 +268,11 @@ dataSourcesRouter.put(
       // Include availableTables if provided
       if (availableTables !== undefined) {
         updateData.availableTables = availableTables;
+      }
+
+      // Include selectedTable if provided
+      if (selectedTable !== undefined) {
+        updateData.selectedTable = selectedTable;
       }
 
       await docRef.update(updateData);
@@ -512,6 +518,66 @@ dataSourcesRouter.post(
       });
     } catch (error: any) {
       console.error("Error executing query:", error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// ===== GET /api/tenants/:tenantId/datasources/:dataSourceId/preview =====
+// Preview data from a specific table
+dataSourcesRouter.get(
+  "/:tenantId/datasources/:dataSourceId/preview",
+  async (req: any, res: any) => {
+    try {
+      const { tenantId, dataSourceId } = req.params;
+      const { table, limit = 5 } = req.query;
+      const user = req.user;
+
+      // Verify user has access
+      if (!user.isSuperAdmin && user.tenantId !== tenantId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      if (!table) {
+        return res.status(400).json({ error: "Table name is required" });
+      }
+
+      const docRef = db.doc(`tenants/${tenantId}/datasources/${dataSourceId}`);
+      const doc = await docRef.get();
+
+      if (!doc.exists) {
+        return res.status(404).json({ error: "Data source not found" });
+      }
+
+      const dataSource = doc.data();
+      if (!dataSource) {
+        return res.status(404).json({ error: "Data source not found" });
+      }
+
+      const { type, connection } = dataSource as any;
+
+      // Execute query based on database type
+      let query = "";
+      if (type === "mssql" || type === "mysql" || type === "postgresql") {
+        query = `SELECT TOP ${limit} * FROM ${table}`;
+        if (type === "postgresql" || type === "mysql") {
+          query = `SELECT * FROM ${table} LIMIT ${limit}`;
+        }
+      }
+
+      // Import database connectors
+      const { executeQuery } = await import("../utils/database-connectors");
+
+      const result = await executeQuery(type, connection, query);
+
+      res.json({
+        data: result.data,
+        columns: result.columns,
+        rowCount: result.rowCount,
+        totalRecords: result.totalRecords || result.rowCount,
+      });
+    } catch (error: any) {
+      console.error("Error previewing data:", error);
       res.status(500).json({ error: error.message });
     }
   }

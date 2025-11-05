@@ -310,6 +310,7 @@ export async function updateDashboard(
     status?: "draft" | "active" | "archived";
     visibility?: "private" | "public" | "org";
     dataSourceId?: string;
+    selectedTable?: string;
   }
 ): Promise<any> {
   return fetcher(`/api/tenants/${tenantId}/dashboards/${dashboardId}`, {
@@ -439,6 +440,7 @@ export async function updateDataSource(
     connection: any;
     status?: string;
     availableTables?: string[];
+    selectedTable?: string;
   }
 ): Promise<any> {
   return fetcher(`/api/tenants/${tenantId}/datasources/${dataSourceId}`, {
@@ -483,6 +485,27 @@ export async function getDataSourceTables(
   dataSourceId: string
 ): Promise<any> {
   return fetcher(`/api/tenants/${tenantId}/datasources/${dataSourceId}/tables`);
+}
+
+/**
+ * Preview data from a table
+ */
+export async function previewTableData(
+  tenantId: string,
+  dataSourceId: string,
+  table: string,
+  limit: number = 5
+): Promise<{
+  data: any[];
+  columns: string[];
+  rowCount: number;
+  totalRecords: number;
+}> {
+  return fetcher(
+    `/api/tenants/${tenantId}/datasources/${dataSourceId}/preview?table=${encodeURIComponent(
+      table
+    )}&limit=${limit}`
+  );
 }
 
 /**

@@ -38,6 +38,7 @@ const UpdateDashboardSchema = z.object({
   status: z.enum(["draft", "active", "archived"]).optional(),
   visibility: z.enum(["private", "public", "org"]).optional(),
   dataSourceId: z.string().optional(), // Allow updating data source
+  selectedTable: z.string().optional(), // Allow updating selected table
 });
 
 const CreateVersionSchema = z.object({

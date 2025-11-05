@@ -80,6 +80,18 @@ export default function DashboardDetailPage() {
     success: boolean;
     message: string;
   } | null>(null);
+  const [availableTables, setAvailableTables] = useState<string[]>([]);
+  const [selectedTable, setSelectedTable] = useState<string>("");
+
+  // Data Preview states
+  const [previewData, setPreviewData] = useState<any[]>([]);
+  const [previewColumns, setPreviewColumns] = useState<string[]>([]);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [previewError, setPreviewError] = useState<string>("");
+
+  // Config Editor state
+  const [dashboardConfig, setDashboardConfig] = useState<string>("");
+  const [isEditingConfig, setIsEditingConfig] = useState(false);
 
   // Form validation errors
   const [formErrors, setFormErrors] = useState<{
@@ -116,6 +128,14 @@ export default function DashboardDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId, dashboardId]);
 
+  // Load preview data when dashboard has selectedTable
+  useEffect(() => {
+    if (dashboard?.selectedTable && dashboard?.dataSourceId) {
+      loadPreviewData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dashboard?.selectedTable, dashboard?.dataSourceId]);
+
   const loadDashboard = async () => {
     try {
       setLoading(true);
@@ -144,6 +164,31 @@ export default function DashboardDetailPage() {
       setDataSources(data);
     } catch (error: any) {
       console.error("Error loading data sources:", error);
+    }
+  };
+
+  const loadPreviewData = async () => {
+    if (!dashboard?.selectedTable || !dashboard?.dataSourceId) return;
+
+    try {
+      setLoadingPreview(true);
+      setPreviewError("");
+
+      const { previewTableData } = await import("@/lib/api");
+      const result = await previewTableData(
+        tenantId,
+        dashboard.dataSourceId,
+        dashboard.selectedTable,
+        5
+      );
+
+      setPreviewData(result.data);
+      setPreviewColumns(result.columns);
+    } catch (error: any) {
+      console.error("Error loading preview data:", error);
+      setPreviewError(error.message || "Failed to load preview data");
+    } finally {
+      setLoadingPreview(false);
     }
   };
 
@@ -203,6 +248,20 @@ export default function DashboardDetailPage() {
       password: ds.connection.password || "", // Show password for editing
       schema: ds.connection.schema || "",
     });
+
+    // Load available tables and selected table if exists
+    if ((ds as any).availableTables) {
+      setAvailableTables((ds as any).availableTables);
+    }
+
+    // Load selected table from dashboard (not from data source)
+    // because each dashboard may use different table from the same data source
+    if ((dashboard as any).selectedTable) {
+      setSelectedTable((dashboard as any).selectedTable);
+    } else if ((ds as any).selectedTable) {
+      // Fallback to data source's selected table if dashboard doesn't have one
+      setSelectedTable((ds as any).selectedTable);
+    }
 
     // Set edit mode
     setEditDataSourceId(selectedDataSourceId);
@@ -504,6 +563,7 @@ export default function DashboardDetailPage() {
         } tables`,
       });
       setNewConnectionTested(true);
+      setAvailableTables(result.tables || []);
       toast.success("Connection successful!");
 
       // If editing existing data source, update its status to "connected"
@@ -524,6 +584,7 @@ export default function DashboardDetailPage() {
             },
             status: "connected",
             availableTables: result.tables || [],
+            selectedTable: selectedTable || undefined, // Include selected table
           });
 
           // Reload data sources to show updated status
@@ -586,18 +647,35 @@ export default function DashboardDetailPage() {
           schema: formData.schema || undefined,
         },
         status: "connected", // Set status as connected since we tested it
-        availableTables: [], // Could store tables from test result
+        availableTables: availableTables, // Store discovered tables
+        selectedTable: selectedTable || undefined, // Store selected table
       };
 
       if (editDataSourceId) {
         // Update existing data source
         await updateDataSource(tenantId, editDataSourceId, dataSourceData);
+
+        // If we have a selected table, update the dashboard with it
+        if (selectedTable) {
+          await updateDashboard(tenantId, dashboardId, {
+            selectedTable: selectedTable,
+          });
+        }
+
         toast.success(
           `✅ Data source "${formData.name}" updated successfully!`
         );
       } else {
         // Create new data source
         await createDataSource(tenantId, dataSourceData);
+
+        // If we have a selected table, update the dashboard with it
+        if (selectedTable) {
+          await updateDashboard(tenantId, dashboardId, {
+            selectedTable: selectedTable,
+          });
+        }
+
         toast.success(
           `✅ Data source "${formData.name}" created successfully!`
         );
@@ -605,7 +683,9 @@ export default function DashboardDetailPage() {
 
       setCreateDataSourceOpen(false);
       resetForm();
-      await loadDataSources();
+
+      // Reload both data sources and dashboard
+      await Promise.all([loadDataSources(), loadDashboard()]);
     } catch (error: any) {
       console.error("Error saving data source:", error);
       toast.error(`❌ Failed to save data source: ${error.message}`);
@@ -626,6 +706,8 @@ export default function DashboardDetailPage() {
     setNewConnectionTested(false);
     setNewConnectionStatus(null);
     setEditDataSourceId(""); // Clear edit mode
+    setAvailableTables([]);
+    setSelectedTable("");
   };
 
   const getDefaultPort = (type: DataSourceType): number => {
@@ -660,7 +742,7 @@ export default function DashboardDetailPage() {
 
   if (loading) {
     return (
-      <div className="container mx-auto p-6">
+      <div className="w-full px-4 py-6">
         <div className="flex items-center justify-center h-96">
           <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
         </div>
@@ -789,23 +871,241 @@ export default function DashboardDetailPage() {
 
         {/* Design Tab */}
         <TabsContent value="design" className="mt-6">
-          <Card>
-            <CardContent className="py-12">
-              <div className="text-center text-gray-500">
-                <Plus className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-                <h3 className="text-lg font-semibold mb-2">
-                  Dashboard Designer
-                </h3>
-                <p className="mb-4">
-                  Drag and drop widgets to design your dashboard
-                </p>
-                <Button>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Widget
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="space-y-6">
+            {/* Data Preview Card */}
+            {dashboard?.selectedTable && dashboard?.dataSourceId ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Database className="h-5 w-5" />
+                    Data Preview: {dashboard.selectedTable}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {loadingPreview ? (
+                    <div className="flex items-center justify-center py-12">
+                      <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+                      <span className="ml-2 text-gray-600">
+                        Loading data...
+                      </span>
+                    </div>
+                  ) : previewError ? (
+                    <div className="text-center py-12">
+                      <XCircle className="h-12 w-12 mx-auto mb-4 text-red-400" />
+                      <p className="text-red-600">{previewError}</p>
+                      <Button
+                        variant="outline"
+                        onClick={loadPreviewData}
+                        className="mt-4"
+                      >
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                        Retry
+                      </Button>
+                    </div>
+                  ) : previewData.length > 0 ? (
+                    <>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              {previewColumns.map((column) => (
+                                <th
+                                  key={column}
+                                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                >
+                                  {column}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {previewData.map((row, idx) => (
+                              <tr key={idx}>
+                                {previewColumns.map((column) => (
+                                  <td
+                                    key={column}
+                                    className="px-6 py-4 whitespace-nowrap text-sm text-gray-900"
+                                  >
+                                    {row[column]?.toString() || "-"}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="mt-4 text-sm text-gray-500 text-center">
+                        Showing {previewData.length} of total records
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-center py-12 text-gray-500">
+                      No data available
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardContent className="py-12">
+                  <div className="text-center text-gray-500">
+                    <Database className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                    <h3 className="text-lg font-semibold mb-2">
+                      No Table Selected
+                    </h3>
+                    <p className="mb-4">
+                      Please select a data source and table in Settings tab
+                      first
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Dashboard Config Editor Card */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Settings className="h-5 w-5" />
+                    Dashboard Configuration
+                  </CardTitle>
+                  <div className="flex gap-2">
+                    {!isEditingConfig ? (
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setIsEditingConfig(true);
+                          // Initialize with current dashboard config or default
+                          const defaultConfig = {
+                            layout: "grid",
+                            theme: "light",
+                            gridCols: 12,
+                            gridRowHeight: 100,
+                            widgets: [],
+                            autoRefresh: false,
+                            refreshInterval: 0,
+                          };
+                          setDashboardConfig(
+                            JSON.stringify(defaultConfig, null, 2)
+                          );
+                        }}
+                      >
+                        <Pencil className="mr-2 h-4 w-4" />
+                        Edit Config
+                      </Button>
+                    ) : (
+                      <>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setIsEditingConfig(false);
+                            setDashboardConfig("");
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={() => {
+                            try {
+                              JSON.parse(dashboardConfig);
+                              toast.success("✅ Configuration saved!");
+                              setIsEditingConfig(false);
+                            } catch {
+                              toast.error("❌ Invalid JSON format");
+                            }
+                          }}
+                        >
+                          <Save className="mr-2 h-4 w-4" />
+                          Save Config
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {!isEditingConfig ? (
+                  <div className="text-center py-12 text-gray-500">
+                    <Settings className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                    <h3 className="text-lg font-semibold mb-2">
+                      Dashboard Configuration
+                    </h3>
+                    <p className="mb-4">
+                      Edit dashboard configuration in JSON format to customize
+                      layout, widgets, and settings
+                    </p>
+                    <Button
+                      onClick={() => {
+                        setIsEditingConfig(true);
+                        const defaultConfig = {
+                          layout: "grid",
+                          theme: "light",
+                          gridCols: 12,
+                          gridRowHeight: 100,
+                          widgets: [],
+                          autoRefresh: false,
+                          refreshInterval: 0,
+                        };
+                        setDashboardConfig(
+                          JSON.stringify(defaultConfig, null, 2)
+                        );
+                      }}
+                    >
+                      <Pencil className="mr-2 h-4 w-4" />
+                      Edit Configuration
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <h4 className="text-sm font-semibold text-gray-700 mb-2">
+                        💡 Configuration Guide
+                      </h4>
+                      <ul className="text-xs text-gray-600 space-y-1">
+                        <li>
+                          • <strong>layout</strong>: &quot;grid&quot; |
+                          &quot;single-page&quot; | &quot;custom&quot;
+                        </li>
+                        <li>
+                          • <strong>theme</strong>: &quot;light&quot; |
+                          &quot;dark&quot; | &quot;auto&quot;
+                        </li>
+                        <li>
+                          • <strong>gridCols</strong>: Number of grid columns
+                          (1-24)
+                        </li>
+                        <li>
+                          • <strong>widgets</strong>: Array of widget
+                          configurations
+                        </li>
+                        <li>
+                          • <strong>autoRefresh</strong>: Enable auto-refresh
+                          (boolean)
+                        </li>
+                      </ul>
+                    </div>
+                    <div>
+                      <Label
+                        htmlFor="config-editor"
+                        className="text-sm font-medium mb-2 block"
+                      >
+                        JSON Configuration
+                      </Label>
+                      <textarea
+                        id="config-editor"
+                        value={dashboardConfig}
+                        onChange={(e) => setDashboardConfig(e.target.value)}
+                        className="w-full h-96 p-4 font-mono text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+                        placeholder="Enter dashboard configuration in JSON format..."
+                        spellCheck={false}
+                      />
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* Versions Tab */}
@@ -1408,6 +1708,10 @@ export default function DashboardDetailPage() {
 
               <div>
                 <Label htmlFor="schema">Schema (optional)</Label>
+                <p className="text-xs text-gray-500 mb-2">
+                  💡 Schema คือ &quot;กลุ่ม&quot; หรือ &quot;โฟลเดอร์&quot;
+                  ที่จัดเก็บตารางในฐานข้อมูล เช่น dbo, public
+                </p>
                 <Input
                   id="schema"
                   placeholder="e.g., dbo, public"
@@ -1431,13 +1735,19 @@ export default function DashboardDetailPage() {
                   </p>
                 )}
                 {formData.type === "mssql" && !formErrors.schema && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    Common schemas for SQL Server: dbo, public
+                  <p className="text-xs text-blue-600 mt-1 font-medium">
+                    ✓ SQL Server ใช้ schema: dbo (default), hr, sales
                   </p>
                 )}
                 {formData.type === "postgresql" && !formErrors.schema && (
+                  <p className="text-xs text-blue-600 mt-1 font-medium">
+                    ✓ PostgreSQL ใช้ schema: public (default),
+                    information_schema
+                  </p>
+                )}
+                {formData.type === "mysql" && !formErrors.schema && (
                   <p className="text-xs text-gray-500 mt-1">
-                    Common schemas for PostgreSQL: public, information_schema
+                    ℹ️ MySQL มักไม่ใช้ schema (ใช้ database แทน)
                   </p>
                 )}
               </div>
@@ -1484,6 +1794,42 @@ export default function DashboardDetailPage() {
                       </p>
                       <p className="text-sm">{newConnectionStatus.message}</p>
                     </div>
+                  </div>
+                )}
+
+                {/* Table Selection - Show when connection is successful OR when editing with existing tables */}
+                {availableTables.length > 0 && (
+                  <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <Label
+                      htmlFor="table-select"
+                      className="text-sm font-semibold text-blue-900 mb-2 block"
+                    >
+                      📊 Select Table (Optional)
+                    </Label>
+                    <p className="text-xs text-blue-600 mb-3">
+                      เลือกตารางที่ต้องการใช้งานใน Dashboard นี้
+                    </p>
+                    <Select
+                      value={selectedTable}
+                      onValueChange={setSelectedTable}
+                    >
+                      <SelectTrigger id="table-select" className="bg-white">
+                        <SelectValue placeholder="Choose a table to preview data..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableTables.map((table) => (
+                          <SelectItem key={table} value={table}>
+                            {table}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {selectedTable && (
+                      <p className="text-xs text-blue-600 mt-2">
+                        ✓ Table &quot;{selectedTable}&quot; selected for this
+                        dashboard
+                      </p>
+                    )}
                   </div>
                 )}
               </div>

@@ -292,3 +292,93 @@ export async function testDatabaseConnection(
     };
   }
 }
+
+/**
+ * Execute Query on Database
+ */
+export async function executeQuery(
+  type: string,
+  config: ConnectionConfig,
+  query: string
+): Promise<{
+  data: any[];
+  columns: string[];
+  rowCount: number;
+  totalRecords?: number;
+}> {
+  try {
+    if (type === "mssql") {
+      const sql = await import("mssql");
+      const mssql = sql.default || sql;
+
+      const pool = await mssql.connect({
+        server: config.host || "",
+        port: config.port || 1433,
+        database: config.database || "",
+        user: config.username || "",
+        password: config.password || "",
+        options: {
+          encrypt: config.ssl !== false,
+          trustServerCertificate: true,
+        },
+      });
+
+      const result = await pool.request().query(query);
+      await pool.close();
+
+      return {
+        data: result.recordset || [],
+        columns:
+          result.recordset.length > 0 ? Object.keys(result.recordset[0]) : [],
+        rowCount: result.recordset.length,
+      };
+    } else if (type === "mysql") {
+      const mysql = await import("mysql2/promise");
+
+      const connection = await mysql.createConnection({
+        host: config.host || "",
+        port: config.port || 3306,
+        user: config.username || "",
+        password: config.password || "",
+        database: config.database || "",
+      });
+
+      const [rows] = await connection.execute(query);
+      await connection.end();
+
+      const data = Array.isArray(rows) ? rows : [];
+      return {
+        data,
+        columns: data.length > 0 ? Object.keys(data[0]) : [],
+        rowCount: data.length,
+      };
+    } else if (type === "postgresql") {
+      const { Client } = await import("pg");
+
+      const client = new Client({
+        host: config.host || "",
+        port: config.port || 5432,
+        user: config.username || "",
+        password: config.password || "",
+        database: config.database || "",
+      });
+
+      await client.connect();
+      const result = await client.query(query);
+      await client.end();
+
+      return {
+        data: result.rows || [],
+        columns: result.fields?.map((f) => f.name) || [],
+        rowCount: result.rowCount || 0,
+      };
+    } else if (type === "mongodb") {
+      throw new Error("MongoDB query execution not yet implemented");
+    }
+
+    throw new Error(`Unsupported database type: ${type}`);
+  } catch (error: any) {
+    console.error("❌ Query execution error:", error);
+    throw error;
+  }
+}
