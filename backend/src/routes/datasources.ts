@@ -7,6 +7,7 @@ import {
   requireTenant,
   validateBody,
 } from "../middleware/auth";
+import { testDatabaseConnection } from "../utils/database-connectors";
 
 export const dataSourcesRouter = Router();
 
@@ -45,6 +46,8 @@ const CreateDataSourceSchema = z.object({
     ssl: z.boolean().optional(),
     sslCert: z.string().optional(),
   }),
+  status: z.string().optional(),
+  availableTables: z.array(z.string()).optional(),
 });
 
 const TestConnectionSchema = z.object({
@@ -103,14 +106,10 @@ dataSourcesRouter.get("/:tenantId/datasources", async (req: any, res: any) => {
 
     const dataSources = dsSnapshot.docs.map((doc: any) => {
       const data = doc.data();
-      // Don't expose password in list view
+      // Return connection with real password for editing
+      // Note: In production, consider encrypting passwords in Firestore
+      // and only show them when explicitly requested by authenticated users
       const connection = { ...data.connection };
-      if (connection.password) {
-        connection.password = "********";
-      }
-      if (connection.apiKey) {
-        connection.apiKey = "********";
-      }
 
       return {
         id: doc.id,
@@ -178,7 +177,7 @@ dataSourcesRouter.post(
   async (req: any, res: any) => {
     try {
       const { tenantId } = req.params;
-      const { name, type, connection } = req.body;
+      const { name, type, connection, status, availableTables } = req.body;
       const user = req.user;
 
       // Verify user has access (Super Admin can access any tenant)
@@ -195,8 +194,8 @@ dataSourcesRouter.post(
         name,
         type,
         connection,
-        availableTables: [],
-        status: "untested",
+        availableTables: availableTables || [],
+        status: status || "untested",
         createdAt: new Date(),
         createdBy: user.uid,
         updatedAt: new Date(),
@@ -223,7 +222,7 @@ dataSourcesRouter.put(
   async (req: any, res: any) => {
     try {
       const { tenantId, dataSourceId } = req.params;
-      const { name, type, connection } = req.body;
+      const { name, type, connection, status, availableTables } = req.body;
       const user = req.user;
 
       // Verify user has access (Super Admin can access any tenant)
@@ -238,12 +237,39 @@ dataSourcesRouter.put(
         return res.status(404).json({ error: "Data source not found" });
       }
 
-      await docRef.update({
+      // If password is all dots (unchanged), keep the existing password
+      const existingData = doc.data();
+      const updateConnection = { ...connection };
+
+      // Check if password is masked (all dots or asterisks)
+      if (
+        updateConnection.password &&
+        /^[*•]+$/.test(updateConnection.password)
+      ) {
+        // Keep existing password
+        updateConnection.password =
+          existingData?.connection?.password || updateConnection.password;
+      }
+
+      // Prepare update data
+      const updateData: any = {
         name,
         type,
-        connection,
+        connection: updateConnection,
         updatedAt: new Date(),
-      });
+      };
+
+      // Include status if provided
+      if (status !== undefined) {
+        updateData.status = status;
+      }
+
+      // Include availableTables if provided
+      if (availableTables !== undefined) {
+        updateData.availableTables = availableTables;
+      }
+
+      await docRef.update(updateData);
 
       const updatedDoc = await docRef.get();
       res.json({
@@ -317,34 +343,43 @@ dataSourcesRouter.post(
         return res.status(403).json({ error: "Access denied" });
       }
 
-      // TODO: Implement actual connection testing for each database type
-      // For now, return mock success
       console.log(
-        `Testing ${type} connection for tenant ${tenantId}:`,
-        connection
+        `\n🔵 ===== Testing Connection for Tenant: ${tenantId} =====`
       );
-
-      // Mock implementation
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Mock response based on type
-      let mockTables: string[] = [];
-      if (type === "mssql" || type === "mysql" || type === "postgresql") {
-        mockTables = ["users", "products", "orders", "categories"];
-      } else if (type === "firestore") {
-        mockTables = ["users", "dashboards", "reports"];
-      }
-
-      res.json({
-        success: true,
-        message: "Connection successful",
-        availableTables: mockTables,
+      console.log("Type:", type);
+      console.log("Connection Config:", {
+        ...connection,
+        password: connection.password ? "***hidden***" : undefined,
       });
+
+      // Use real connection testing
+      const result = await testDatabaseConnection(type, connection);
+
+      console.log("Test Result:", {
+        success: result.success,
+        message: result.message,
+        tablesCount: result.availableTables?.length || 0,
+      });
+
+      if (result.success) {
+        res.json({
+          success: true,
+          message: result.message,
+          availableTables: result.availableTables || [],
+          tables: result.availableTables || [], // Alias for backward compatibility
+        });
+      } else {
+        res.status(400).json({
+          success: false,
+          message: result.message,
+          error: result.error,
+        });
+      }
     } catch (error: any) {
-      console.error("Error testing connection:", error);
+      console.error("❌ Error testing connection:", error);
       res.status(500).json({
         success: false,
-        message: error.message,
+        message: `Internal error: ${error.message}`,
       });
     }
   }
