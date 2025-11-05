@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Database,
@@ -10,14 +11,32 @@ import {
   RotateCcw,
   BookOpen,
   Table,
+  Plus,
+  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { DashboardConfig } from "@/types/dashboard";
 import { toast } from "sonner";
-import { getDataSourceColumns } from "@/lib/api";
+import { getDataSourceColumns, createDashboardVersion } from "@/lib/api";
 import { getAuth } from "firebase/auth";
+
+// Dynamically import Monaco Editor (client-side only)
+const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex items-center justify-center text-gray-500">
+      Loading editor...
+    </div>
+  ),
+});
 
 interface Dashboard {
   id: string;
@@ -46,6 +65,7 @@ export function DesignTab({ dashboard, tenantId }: DesignTabProps) {
   const [columns, setColumns] = useState<TableColumn[]>([]);
   const [loadingColumns, setLoadingColumns] = useState(false);
   const [isValid, setIsValid] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Table preview states
   const [previewData, setPreviewData] = useState<TablePreviewData | null>(null);
@@ -198,13 +218,32 @@ export function DesignTab({ dashboard, tenantId }: DesignTabProps) {
   };
 
   const handleSave = async () => {
+    if (!isValid) {
+      toast.error("Invalid JSON format. Please fix the errors first.");
+      return;
+    }
+
     try {
+      setIsSaving(true);
       const config = JSON.parse(configText);
-      // TODO: Save config to backend API
-      console.log("Saving config:", config);
+
+      // Save config by creating a new version
+      const result = await createDashboardVersion(tenantId, dashboard.id, {
+        config,
+        changeLog: "Configuration updated from Design Tab",
+      });
+
+      console.log("Configuration saved:", result);
       toast.success("Configuration saved successfully!");
-    } catch {
-      toast.error("Invalid JSON format. Please fix the errors.");
+    } catch (err: any) {
+      console.error("Error saving config:", err);
+      if (err.message.includes("Unexpected token")) {
+        toast.error("Invalid JSON format. Please fix the errors.");
+      } else {
+        toast.error(err.message || "Failed to save configuration");
+      }
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -217,6 +256,126 @@ export function DesignTab({ dashboard, tenantId }: DesignTabProps) {
   const handleCopy = () => {
     navigator.clipboard.writeText(configText);
     toast.success("Configuration copied to clipboard!");
+  };
+
+  const generateWidgetTemplate = (type: string) => {
+    const widgetId = `widget_${Date.now()}`;
+
+    const templates: Record<string, any> = {
+      bar: {
+        id: widgetId,
+        title: "Bar Chart",
+        type: "bar",
+        position: { x: 0, y: 0, w: 6, h: 4 },
+        dataConfig: {
+          table: dashboard.selectedTable || "",
+          xField: "",
+          yField: "",
+          aggregation: "sum",
+          limit: 100,
+        },
+        styleConfig: {
+          color: "#3b82f6",
+          showLegend: true,
+          showGrid: true,
+          showLabels: true,
+        },
+        visible: true,
+      },
+      line: {
+        id: widgetId,
+        title: "Line Chart",
+        type: "line",
+        position: { x: 6, y: 0, w: 6, h: 4 },
+        dataConfig: {
+          table: dashboard.selectedTable || "",
+          xField: "",
+          yField: "",
+          aggregation: "sum",
+          limit: 100,
+        },
+        styleConfig: {
+          color: "#10b981",
+          showLegend: true,
+          showGrid: true,
+          showLabels: true,
+        },
+        visible: true,
+      },
+      pie: {
+        id: widgetId,
+        title: "Pie Chart",
+        type: "pie",
+        position: { x: 0, y: 4, w: 4, h: 4 },
+        dataConfig: {
+          table: dashboard.selectedTable || "",
+          xField: "",
+          yField: "",
+          aggregation: "sum",
+          limit: 10,
+        },
+        styleConfig: {
+          showLegend: true,
+          showLabels: true,
+        },
+        visible: true,
+      },
+      kpi: {
+        id: widgetId,
+        title: "KPI Card",
+        type: "kpi",
+        position: { x: 4, y: 4, w: 2, h: 2 },
+        dataConfig: {
+          table: dashboard.selectedTable || "",
+          yField: "",
+          aggregation: "sum",
+        },
+        styleConfig: {
+          color: "#f59e0b",
+          prefix: "",
+          suffix: "",
+        },
+        visible: true,
+      },
+      table: {
+        id: widgetId,
+        title: "Data Table",
+        type: "table",
+        position: { x: 0, y: 8, w: 12, h: 6 },
+        dataConfig: {
+          table: dashboard.selectedTable || "",
+          limit: 50,
+        },
+        styleConfig: {
+          showPagination: true,
+          pageSize: 10,
+        },
+        visible: true,
+      },
+    };
+
+    return templates[type] || templates.bar;
+  };
+
+  const handleAddWidget = (type: string) => {
+    try {
+      const config = JSON.parse(configText);
+      const newWidget = generateWidgetTemplate(type);
+
+      // Add new widget to widgets array
+      config.widgets = [...(config.widgets || []), newWidget];
+
+      // Update config text
+      const updatedConfig = JSON.stringify(config, null, 2);
+      setConfigText(updatedConfig);
+      setIsValid(true);
+
+      toast.success(
+        `${type.charAt(0).toUpperCase() + type.slice(1)} chart added!`
+      );
+    } catch (err) {
+      toast.error("Invalid JSON. Please fix errors first.");
+    }
   };
 
   // Check if we have required data to show config editor
@@ -282,9 +441,9 @@ export function DesignTab({ dashboard, tenantId }: DesignTabProps) {
             <RotateCcw className="h-4 w-4 mr-2" />
             Reset
           </Button>
-          <Button onClick={handleSave} disabled={!isValid}>
+          <Button onClick={handleSave} disabled={!isValid || isSaving}>
             <Save className="h-4 w-4 mr-2" />
-            Save Config
+            {isSaving ? "Saving..." : "Save Config"}
           </Button>
         </div>
       </div>
@@ -293,18 +452,61 @@ export function DesignTab({ dashboard, tenantId }: DesignTabProps) {
         {/* Left - JSON Editor */}
         <div className="flex-1 flex flex-col min-h-0">
           <Card className="flex-1 flex flex-col min-h-0">
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
               <CardTitle className="text-base">Configuration Editor</CardTitle>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Widget
+                    <ChevronDown className="h-4 w-4 ml-2" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={() => handleAddWidget("bar")}>
+                    📊 Bar Chart
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleAddWidget("line")}>
+                    📈 Line Chart
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleAddWidget("pie")}>
+                    🥧 Pie Chart
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleAddWidget("kpi")}>
+                    🎯 KPI Card
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleAddWidget("table")}>
+                    📋 Data Table
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </CardHeader>
             <CardContent className="flex-1 p-0 min-h-0 overflow-hidden">
-              <textarea
+              <MonacoEditor
+                height="100%"
+                language="json"
                 value={configText}
-                onChange={(e) => handleConfigChange(e.target.value)}
-                className={`w-full h-full font-mono text-sm p-4 border-0 resize-none focus:outline-none focus:ring-0 ${
-                  !isValid ? "bg-red-50" : ""
-                }`}
-                placeholder="Enter dashboard configuration in JSON format..."
-                spellCheck={false}
+                onChange={(value) => handleConfigChange(value || "")}
+                theme="vs-light"
+                options={{
+                  minimap: { enabled: false },
+                  fontSize: 13,
+                  lineNumbers: "on",
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  tabSize: 2,
+                  formatOnPaste: true,
+                  formatOnType: true,
+                  quickSuggestions: true,
+                  suggest: {
+                    showWords: true,
+                    showSnippets: true,
+                  },
+                  folding: true,
+                  bracketPairColorization: {
+                    enabled: true,
+                  },
+                }}
               />
             </CardContent>
           </Card>
