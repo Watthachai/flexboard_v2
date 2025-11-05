@@ -3,6 +3,7 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { AdminSidebar } from "@/components/admin-sidebar";
+import { Toaster } from "sonner";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -63,6 +64,7 @@ export default function RootLayout({
         <AuthProvider>
           <LayoutContent>{children}</LayoutContent>
         </AuthProvider>
+        <Toaster position="top-right" richColors closeButton />
       </body>
     </html>
   );

@@ -4,7 +4,12 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Menu, Building2, Mail, Users, LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -106,6 +111,7 @@ export function AdminSidebar() {
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="w-64 p-0">
+          <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
           <SidebarContent onClose={() => setIsOpen(false)} />
         </SheetContent>
       </Sheet>

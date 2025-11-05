@@ -309,6 +309,7 @@ export async function updateDashboard(
     tags?: string[];
     status?: "draft" | "active" | "archived";
     visibility?: "private" | "public" | "org";
+    dataSourceId?: string;
   }
 ): Promise<any> {
   return fetcher(`/api/tenants/${tenantId}/dashboards/${dashboardId}`, {
@@ -416,6 +417,8 @@ export async function createDataSource(
     name: string;
     type: string;
     connection: any;
+    status?: string;
+    availableTables?: string[];
   }
 ): Promise<any> {
   return fetcher(`/api/tenants/${tenantId}/datasources`, {
@@ -434,6 +437,8 @@ export async function updateDataSource(
     name: string;
     type: string;
     connection: any;
+    status?: string;
+    availableTables?: string[];
   }
 ): Promise<any> {
   return fetcher(`/api/tenants/${tenantId}/datasources/${dataSourceId}`, {

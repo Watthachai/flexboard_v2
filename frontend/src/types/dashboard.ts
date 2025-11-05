@@ -9,6 +9,8 @@ export type DataSourceType =
   | "mssql"
   | "mysql"
   | "postgresql"
+  | "oracle"
+  | "mongodb"
   | "firestore"
   | "bigquery"
   | "rest_api"
@@ -45,7 +47,7 @@ export interface DataSource {
   // Metadata
   availableTables?: string[];
   lastTested?: Date | string;
-  status: "connected" | "error" | "untested";
+  status: "connected" | "tested" | "error" | "untested";
   errorMessage?: string;
 
   // Timestamps
