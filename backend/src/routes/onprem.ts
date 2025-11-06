@@ -190,37 +190,51 @@ onpremRouter.get(
       const { tenantId } = req;
       const { dashboardId } = req.params;
 
-      console.log(`🔍 [OnPrem] Getting dashboard version for: ${dashboardId}, tenant: ${tenantId}`);
+      console.log(
+        `🔍 [OnPrem] Getting dashboard version for: ${dashboardId}, tenant: ${tenantId}`
+      );
 
-      // Get all versions and filter in code to avoid composite index requirement
-      const versionsSnapshot = await db
+      // Get dashboard document to find currentVersion
+      const dashboardDoc = await db
+        .collection("tenants")
+        .doc(tenantId)
+        .collection("dashboards")
+        .doc(dashboardId)
+        .get();
+
+      if (!dashboardDoc.exists) {
+        console.log(`❌ [OnPrem] Dashboard not found: ${dashboardId}`);
+        return res.status(404).json({ error: "Dashboard not found" });
+      }
+
+      const dashboardData = dashboardDoc.data();
+      const currentVersion = dashboardData?.currentVersion;
+
+      if (!currentVersion) {
+        console.log(
+          `❌ [OnPrem] No currentVersion field in dashboard: ${dashboardId}`
+        );
+        return res.status(404).json({ error: "No current version set" });
+      }
+
+      console.log(`📌 [OnPrem] Current version: ${currentVersion}`);
+
+      // Get the specific version document
+      const versionDoc = await db
         .collection("tenants")
         .doc(tenantId)
         .collection("dashboards")
         .doc(dashboardId)
         .collection("versions")
+        .doc(currentVersion)
         .get();
 
-      console.log(`📊 [OnPrem] Found ${versionsSnapshot.docs.length} versions`);
-
-      // Find published version
-      const publishedVersions = versionsSnapshot.docs
-        .filter((doc) => doc.data().status === "published")
-        .sort((a, b) => {
-          const aTime = a.data().createdAt?.toMillis() || 0;
-          const bTime = b.data().createdAt?.toMillis() || 0;
-          return bTime - aTime; // Sort descending
-        });
-
-      console.log(`✅ [OnPrem] Found ${publishedVersions.length} published versions`);
-
-      if (publishedVersions.length === 0) {
-        console.log(`❌ [OnPrem] No published version found for dashboard: ${dashboardId}`);
-        return res.status(404).json({ error: "No published version found" });
+      if (!versionDoc.exists) {
+        console.log(`❌ [OnPrem] Version not found: ${currentVersion}`);
+        return res.status(404).json({ error: "Version not found" });
       }
 
-      const versionDoc = publishedVersions[0];
-      console.log(`✅ [OnPrem] Returning version: ${versionDoc.id}`);
+      console.log(`✅ [OnPrem] Returning version: ${currentVersion}`);
       res.json({
         id: versionDoc.id,
         ...versionDoc.data(),
@@ -242,13 +256,12 @@ onpremRouter.get(
       const { tenantId } = req;
       const { dataSourceId } = req.params;
 
-      console.log(`🔍 [OnPrem] Getting datasource: ${dataSourceId} for tenant: ${tenantId}`);
+      console.log(
+        `🔍 [OnPrem] Getting datasource: ${dataSourceId} for tenant: ${tenantId}`
+      );
 
       const dsDoc = await db
-        .collection("tenants")
-        .doc(tenantId)
-        .collection("dataSources")
-        .doc(dataSourceId)
+        .doc(`tenants/${tenantId}/datasources/${dataSourceId}`)
         .get();
 
       if (!dsDoc.exists) {
@@ -281,10 +294,7 @@ onpremRouter.post(
 
       // Get data source config
       const dsDoc = await db
-        .collection("tenants")
-        .doc(tenantId)
-        .collection("dataSources")
-        .doc(dataSourceId)
+        .doc(`tenants/${tenantId}/datasources/${dataSourceId}`)
         .get();
 
       if (!dsDoc.exists) {
