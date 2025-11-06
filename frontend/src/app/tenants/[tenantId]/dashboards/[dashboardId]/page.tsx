@@ -654,6 +654,7 @@ export default function DashboardDetailPage() {
                   gridTemplateColumns: `repeat(${
                     previewConfig.gridCols || 12
                   }, 1fr)`,
+                  gridAutoRows: `${previewConfig.gridRowHeight || 100}px`,
                 }}
               >
                 {previewConfig.widgets
@@ -661,6 +662,7 @@ export default function DashboardDetailPage() {
                   .map((widget: any) => (
                     <div
                       key={widget.id}
+                      className="min-h-[200px]"
                       style={{
                         gridColumn: `span ${widget.position?.w || 4}`,
                         gridRow: `span ${widget.position?.h || 4}`,
