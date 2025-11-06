@@ -40,6 +40,11 @@ apiKeysRouter.get("/", authenticateUser, async (req: any, res) => {
         createdBy: data.createdBy,
         expiresAt: data.expiresAt?.toDate?.()?.toISOString() || null,
         description: data.description,
+        allowedTags: data.allowedTags || [],
+        maxActivations: data.maxActivations || null,
+        activationCount: data.activationCount || 0,
+        lastActivatedAt:
+          data.lastActivatedAt?.toDate?.()?.toISOString() || null,
       };
     });
 
@@ -55,13 +60,16 @@ apiKeysRouter.get("/", authenticateUser, async (req: any, res) => {
 const CreateApiKeySchema = z.object({
   expiresInDays: z.number().optional(),
   description: z.string().optional(),
+  allowedTags: z.array(z.string()).optional(), // Tags that this key can access
+  maxActivations: z.number().optional(), // Maximum number of times this key can be activated
 });
 
 apiKeysRouter.post("/", authenticateUser, async (req: any, res) => {
   try {
     const { tenantId } = req.params;
     const user = req.user;
-    const { expiresInDays, description } = CreateApiKeySchema.parse(req.body);
+    const { expiresInDays, description, allowedTags, maxActivations } =
+      CreateApiKeySchema.parse(req.body);
 
     // Check if user is admin of this tenant
     if (user.tenantId !== tenantId && !user.isSuperAdmin) {
@@ -101,6 +109,11 @@ apiKeysRouter.post("/", authenticateUser, async (req: any, res) => {
           ? admin.firestore.Timestamp.fromDate(expiresAt)
           : null,
         description: description || "OnPrem Dashboard Access",
+        allowedTags: allowedTags || [], // Empty array means all dashboards
+        maxActivations: maxActivations || null, // null means unlimited
+        activationCount: 0, // Track how many times this key has been used
+        lastActivatedAt: null, // Track last usage
+        activationLog: [], // Track activation history (IP, timestamp)
       });
 
     console.log(`✅ API Key created for tenant ${tenantId}`);

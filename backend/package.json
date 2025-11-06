@@ -8,8 +8,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "lint": "eslint src/**/*.ts",
-    "generate-api-key": "tsx src/generate-api-key.ts"
+    "lint": "eslint src/**/*.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",

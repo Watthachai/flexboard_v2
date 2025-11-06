@@ -24,6 +24,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Plus, Edit2, Trash2, Loader2, Key } from "lucide-react";
 import { toast } from "sonner";
+import { ApiKeysModal } from "@/components/api-keys-modal";
 
 interface Tenant {
   id: string;
@@ -45,6 +46,13 @@ export default function TenantsPage() {
     name: "",
     description: "",
   });
+
+  // API Keys Modal state
+  const [apiKeysModalOpen, setApiKeysModalOpen] = useState(false);
+  const [selectedTenantForKeys, setSelectedTenantForKeys] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   // Load tenants on mount
   useEffect(() => {
@@ -279,7 +287,11 @@ export default function TenantsPage() {
                     variant="outline"
                     onClick={(e) => {
                       e.stopPropagation();
-                      router.push(`/tenants/${tenant.id}/api-keys`);
+                      setSelectedTenantForKeys({
+                        id: tenant.id,
+                        name: tenant.name,
+                      });
+                      setApiKeysModalOpen(true);
                     }}
                     disabled={loading}
                   >
@@ -377,6 +389,16 @@ export default function TenantsPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* API Keys Modal */}
+      {selectedTenantForKeys && (
+        <ApiKeysModal
+          open={apiKeysModalOpen}
+          onOpenChange={setApiKeysModalOpen}
+          tenantId={selectedTenantForKeys.id}
+          tenantName={selectedTenantForKeys.name}
+        />
+      )}
     </>
   );
 }

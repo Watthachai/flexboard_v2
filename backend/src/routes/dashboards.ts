@@ -125,6 +125,50 @@ dashboardsRouter.get("/:tenantId/dashboards", async (req: any, res: any) => {
   }
 });
 
+// ===== GET /api/tenants/:tenantId/dashboards-tags =====
+// Get all unique tags from dashboards in a tenant
+dashboardsRouter.get(
+  "/:tenantId/dashboards-tags",
+  async (req: any, res: any) => {
+    try {
+      const { tenantId } = req.params;
+      const user = req.user;
+
+      // Verify user has access to this tenant
+      if (!user.isSuperAdmin && user.tenantId !== tenantId) {
+        return res
+          .status(403)
+          .json({ error: "Access denied to this tenant's dashboards" });
+      }
+
+      const dashboardsSnapshot = await db
+        .collection(`tenants/${tenantId}/dashboards`)
+        .get();
+
+      // Collect all unique tags
+      const tagsSet = new Set<string>();
+      dashboardsSnapshot.docs.forEach((doc: any) => {
+        const data = doc.data();
+        if (data.tags && Array.isArray(data.tags)) {
+          data.tags.forEach((tag: string) => {
+            if (tag && tag.trim()) {
+              tagsSet.add(tag.trim());
+            }
+          });
+        }
+      });
+
+      // Convert to sorted array
+      const tags = Array.from(tagsSet).sort();
+
+      res.json({ tags });
+    } catch (error: any) {
+      console.error("Error fetching dashboard tags:", error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
 // ===== GET /api/tenants/:tenantId/dashboards/:dashboardId =====
 // Get specific dashboard
 dashboardsRouter.get(

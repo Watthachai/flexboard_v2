@@ -267,6 +267,16 @@ export async function getDashboards(tenantId: string): Promise<any> {
 }
 
 /**
+ * Get all unique tags from dashboards in a tenant
+ */
+export async function getDashboardTags(tenantId: string): Promise<string[]> {
+  const response = (await fetcher(
+    `/api/tenants/${tenantId}/dashboards-tags`
+  )) as { tags: string[] };
+  return response.tags || [];
+}
+
+/**
  * Get specific dashboard with config
  */
 export async function getDashboardById(
@@ -574,11 +584,17 @@ export interface ApiKey {
   createdAt: string;
   createdBy: string;
   expiresAt: string | null;
+  allowedTags?: string[];
+  maxActivations?: number | null;
+  activationCount?: number;
+  lastActivatedAt?: string | null;
 }
 
 export interface CreateApiKeyRequest {
   description: string;
   expiresInDays?: number;
+  allowedTags?: string[];
+  maxActivations?: number;
 }
 
 export interface CreateApiKeyResponse {

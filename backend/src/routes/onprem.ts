@@ -56,6 +56,7 @@ async function validateApiKey(req: any, res: any, next: any) {
     // Attach tenant info to request
     req.tenantId = tenantId;
     req.apiKey = apiKey;
+    req.allowedTags = apiKeyData?.allowedTags || []; // Attach allowed tags
 
     next();
   } catch (error: any) {
@@ -121,10 +122,53 @@ onpremRouter.post("/authenticate", async (req, res) => {
       });
     }
 
-    // Return tenant info
+    // Check activation limit
+    const maxActivations = foundApiKeyData.maxActivations;
+    const activationCount = foundApiKeyData.activationCount || 0;
+
+    if (maxActivations !== null && maxActivations !== undefined) {
+      if (activationCount >= maxActivations) {
+        return res.status(401).json({
+          success: false,
+          error: `API key has reached maximum activation limit (${maxActivations})`,
+        });
+      }
+    }
+
+    // Track activation
+    const clientIP = req.ip || req.headers["x-forwarded-for"] || "unknown";
+    const activationEntry = {
+      timestamp: new Date().toISOString(),
+      ip: clientIP,
+      userAgent: req.headers["user-agent"] || "unknown",
+    };
+
+    // Update activation count and log
+    await db
+      .collection("tenants")
+      .doc(foundTenant.id)
+      .collection("apiKeys")
+      .doc(apiKey)
+      .update({
+        activationCount: (activationCount || 0) + 1,
+        lastActivatedAt: new Date(),
+        activationLog: [
+          ...(foundApiKeyData.activationLog || []),
+          activationEntry,
+        ].slice(-10), // Keep last 10 activations
+      });
+
+    console.log(
+      `✅ API Key activated for tenant ${foundTenant.id} (Count: ${
+        activationCount + 1
+      })`
+    );
+
+    // Return tenant info with allowed tags
     res.json({
       success: true,
       tenant: foundTenant,
+      allowedTags: foundApiKeyData.allowedTags || [],
     });
   } catch (error: any) {
     console.error("Error authenticating:", error);
@@ -157,10 +201,10 @@ onpremRouter.get("/config", validateApiKey, async (req: any, res) => {
 });
 
 // ===== GET /api/onprem/dashboards =====
-// Get all dashboards for OnPrem
+// Get all dashboards for OnPrem (filtered by allowed tags)
 onpremRouter.get("/dashboards", validateApiKey, async (req: any, res) => {
   try {
-    const { tenantId } = req;
+    const { tenantId, allowedTags } = req;
 
     const dashboardsSnapshot = await db
       .collection("tenants")
@@ -168,10 +212,29 @@ onpremRouter.get("/dashboards", validateApiKey, async (req: any, res) => {
       .collection("dashboards")
       .get();
 
-    const dashboards = dashboardsSnapshot.docs.map((doc) => ({
+    let dashboards = dashboardsSnapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
     }));
+
+    // Filter dashboards by allowed tags (if specified)
+    if (allowedTags && allowedTags.length > 0) {
+      dashboards = dashboards.filter((dashboard: any) => {
+        const dashboardTags = dashboard.tags || [];
+        // Check if dashboard has at least one allowed tag
+        return dashboardTags.some((tag: string) => allowedTags.includes(tag));
+      });
+
+      console.log(
+        `🔍 [OnPrem] Filtered dashboards by tags ${JSON.stringify(
+          allowedTags
+        )}: ${dashboards.length} dashboards`
+      );
+    } else {
+      console.log(
+        `🔍 [OnPrem] No tag filter - returning all ${dashboards.length} dashboards`
+      );
+    }
 
     res.json(dashboards);
   } catch (error: any) {

@@ -43,7 +43,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
         {/* Main Content */}
         <div className="flex flex-1 flex-col overflow-hidden">
           <main className="flex-1 overflow-y-auto p-8">
-            <div className="mx-auto max-w-6xl">{children}</div>
+            <div className="mx-auto max-w-8xl">{children}</div>
           </main>
         </div>
       </div>

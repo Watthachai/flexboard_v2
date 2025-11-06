@@ -76,14 +76,15 @@ async function fetcher<T>(url: string, options: FetchOptions = {}): Promise<T> {
  */
 export async function authenticate(
   apiKey: string
-): Promise<{ success: boolean; tenant: any }> {
-  const result = await fetcher<{ success: boolean; tenant: any }>(
-    `${BACKEND_URL}/api/onprem/authenticate`,
-    {
-      method: "POST",
-      body: JSON.stringify({ apiKey }),
-    }
-  );
+): Promise<{ success: boolean; tenant: any; allowedTags?: string[] }> {
+  const result = await fetcher<{
+    success: boolean;
+    tenant: any;
+    allowedTags?: string[];
+  }>(`${BACKEND_URL}/api/onprem/authenticate`, {
+    method: "POST",
+    body: JSON.stringify({ apiKey }),
+  });
 
   // Store credentials in localStorage and cookies
   if (result.success && result.tenant) {
@@ -91,6 +92,11 @@ export async function authenticate(
 
     localStorage.setItem("apiKey", apiKey);
     localStorage.setItem("tenantId", tenantId);
+
+    // Store allowed tags if provided
+    if (result.allowedTags) {
+      localStorage.setItem("allowedTags", JSON.stringify(result.allowedTags));
+    }
 
     // Set cookies for middleware
     document.cookie = `apiKey=${apiKey}; path=/; max-age=31536000`; // 1 year
