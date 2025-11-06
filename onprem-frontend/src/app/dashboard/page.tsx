@@ -1,46 +1,37 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, LayoutDashboard, Info } from "lucide-react";
-
-interface DashboardConfig {
-  tenantId: string;
-  name: string;
-  dashboards?: any[];
-}
+import { Button } from "@/components/ui/button";
+import {
+  Loader2,
+  LayoutDashboard,
+  Info,
+  RefreshCw,
+  Settings,
+  User,
+} from "lucide-react";
+import { useDashboard } from "@/hooks/useDashboard";
+import Link from "next/link";
 
 export default function DashboardPage() {
-  const [config, setConfig] = useState<DashboardConfig | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Load tenantId from localStorage on mount
+  const [tenantId, setTenantId] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("tenantId");
+    }
+    return null;
+  });
 
-  useEffect(() => {
-    const loadConfig = () => {
-      try {
-        const tenantId = localStorage.getItem("tenantId");
-        const storedConfig = localStorage.getItem("dashboardConfig");
-
-        if (storedConfig) {
-          const parsedConfig = JSON.parse(storedConfig);
-          setConfig(parsedConfig);
-        } else if (tenantId) {
-          // Create basic config if only tenantId exists
-          setConfig({
-            tenantId: tenantId,
-            name: "Dashboard",
-            dashboards: [],
-          });
-        }
-      } catch (err) {
-        console.error("Failed to load dashboard:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadConfig();
-  }, []);
+  const {
+    activeDashboard,
+    activeVersion,
+    dataSource,
+    loading,
+    error,
+    refetch,
+  } = useDashboard(tenantId || undefined);
 
   if (loading) {
     return (
@@ -50,13 +41,34 @@ export default function DashboardPage() {
     );
   }
 
-  if (!config) {
+  if (error) {
     return (
       <div className="flex h-full items-center justify-center p-4">
+        <Alert variant="destructive">
+          <Info className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
+  if (!activeDashboard) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center p-4 space-y-4">
         <Alert>
           <Info className="h-4 w-4" />
-          <AlertDescription>No configuration found</AlertDescription>
+          <AlertDescription>
+            No active dashboard found for this tenant.
+            <br />
+            Please contact your administrator to set up a dashboard.
+          </AlertDescription>
         </Alert>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={refetch}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh
+          </Button>
+        </div>
       </div>
     );
   }
@@ -64,69 +76,117 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-2 border-b pb-4">
-        <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">
-          {config.name}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Tenant ID:{" "}
-          <span className="inline-flex items-center rounded bg-muted px-2 py-0.5 font-mono text-xs">
-            {config.tenantId}
-          </span>
-        </p>
+      <div className="flex items-center justify-between border-b pb-4">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-2xl font-bold tracking-tight lg:text-3xl">
+            {activeDashboard.name}
+          </h1>
+          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+            <span className="inline-flex items-center rounded bg-muted px-2 py-0.5 font-mono text-xs">
+              {tenantId}
+            </span>
+            {dataSource && (
+              <span className="flex items-center gap-1">
+                📊 {dataSource.name}
+              </span>
+            )}
+            {activeVersion && (
+              <span className="flex items-center gap-1">
+                📌 v{activeVersion.versionNumber}
+              </span>
+            )}
+          </div>
+          {activeDashboard.description && (
+            <p className="text-sm text-muted-foreground">
+              {activeDashboard.description}
+            </p>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={refetch}>
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+          <Link href="/dashboard/settings">
+            <Button variant="outline" size="sm">
+              <Settings className="mr-2 h-4 w-4" />
+              Settings
+            </Button>
+          </Link>
+          <Link href="/dashboard/profile">
+            <Button variant="outline" size="sm">
+              <User className="mr-2 h-4 w-4" />
+              Profile
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Dashboard Content */}
-      {config.dashboards && config.dashboards.length > 0 ? (
+      {activeVersion?.config?.widgets &&
+      activeVersion.config.widgets.length > 0 ? (
         <div className="space-y-6">
-          {config.dashboards.map((dashboard: any) => (
-            <Card key={dashboard.id}>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <LayoutDashboard className="h-5 w-5" />
-                  {dashboard.title}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {/* Widgets Grid */}
-                <div
-                  className={`grid gap-4 ${
-                    dashboard.layout === "grid"
-                      ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
-                      : "grid-cols-1"
-                  }`}
+          {/* Widgets Grid */}
+          <div
+            className="grid gap-4"
+            style={{
+              gridTemplateColumns: `repeat(${
+                activeVersion.config.gridCols || 12
+              }, minmax(0, 1fr))`,
+            }}
+          >
+            {activeVersion.config.widgets
+              .filter((widget: any) => widget.visible !== false)
+              .map((widget: any) => (
+                <Card
+                  key={widget.id}
+                  style={{
+                    gridColumn: `span ${widget.position.w} / span ${widget.position.w}`,
+                    gridRow: `span ${widget.position.h} / span ${widget.position.h}`,
+                  }}
                 >
-                  {dashboard.widgets?.map((widget: any) => (
-                    <Card key={widget.id}>
-                      <CardHeader>
-                        <CardTitle className="text-base">
-                          {widget.type}
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="h-64 flex items-center justify-center bg-muted rounded-md">
-                          <p className="text-sm text-muted-foreground">
-                            Widget: {widget.id}
-                          </p>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                      <LayoutDashboard className="h-4 w-4" />
+                      {widget.title}
+                    </CardTitle>
+                    {widget.description && (
+                      <p className="text-sm text-muted-foreground">
+                        {widget.description}
+                      </p>
+                    )}
+                  </CardHeader>
+                  <CardContent>
+                    {/* TODO: Render actual widget based on type */}
+                    <div className="flex h-48 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                      <div className="text-center">
+                        <p className="font-semibold">
+                          {widget.type.toUpperCase()}
+                        </p>
+                        <p className="text-xs mt-1">
+                          {widget.dataConfig?.table || "No data source"}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+          </div>
         </div>
       ) : (
-        <Card className="border-dashed">
-          <CardContent className="flex min-h-[400px] flex-col items-center justify-center text-center">
-            <LayoutDashboard className="mb-4 h-12 w-12 text-muted-foreground" />
-            <h3 className="mb-2 text-lg font-semibold">
-              No dashboards configured yet
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+            <LayoutDashboard className="h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">
+              No Widgets Configured
             </h3>
-            <p className="max-w-sm text-sm text-muted-foreground">
-              Create your first dashboard to get started
+            <p className="text-muted-foreground mb-4">
+              This dashboard doesn&apos;t have any widgets yet.
             </p>
+            <Button variant="outline" onClick={refetch}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Refresh Dashboard
+            </Button>
           </CardContent>
         </Card>
       )}
