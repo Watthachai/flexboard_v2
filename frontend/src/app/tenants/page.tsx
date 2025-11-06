@@ -8,6 +8,7 @@ import {
   createTenant,
   updateTenant,
   deleteTenant,
+  getDashboards,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -30,6 +31,7 @@ interface Tenant {
   description?: string;
   createdAt: string;
   status: "active" | "inactive";
+  dashboardCount?: number;
 }
 
 export default function TenantsPage() {
@@ -60,7 +62,30 @@ export default function TenantsPage() {
       console.log("🔵 Loading tenants...");
       const data = await getAllTenants();
       console.log("✅ Tenants loaded:", data);
-      setTenants(data);
+
+      // Load dashboard count for each tenant
+      const tenantsWithCounts = await Promise.all(
+        data.map(async (tenant: Tenant) => {
+          try {
+            const dashboards = await getDashboards(tenant.id);
+            return {
+              ...tenant,
+              dashboardCount: dashboards.length,
+            };
+          } catch (err) {
+            console.error(
+              `Failed to load dashboards for tenant ${tenant.id}:`,
+              err
+            );
+            return {
+              ...tenant,
+              dashboardCount: 0,
+            };
+          }
+        })
+      );
+
+      setTenants(tenantsWithCounts);
     } catch (err) {
       console.error("❌ Error loading tenants:", err);
       toast.error("Failed to load tenants");
@@ -224,13 +249,23 @@ export default function TenantsPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {tenant.description && (
+                  {(tenant.description && (
                     <p className="text-sm text-gray-600">
                       {tenant.description}
                     </p>
+                  )) || (
+                    <p className="text-sm text-gray-500">
+                      No description provided
+                    </p>
                   )}
                   <div className="flex items-center justify-between text-sm text-gray-500">
-                    <span>0 dashboards</span>
+                    <span>
+                      {tenant.dashboardCount === 0
+                        ? "0 dashboards"
+                        : tenant.dashboardCount === 1
+                        ? "1 dashboard"
+                        : `${tenant.dashboardCount} dashboards`}
+                    </span>
                     <span>
                       Created {new Date(tenant.createdAt).toLocaleDateString()}
                     </span>
