@@ -505,21 +505,42 @@ dataSourcesRouter.post(
         return res.status(404).json({ error: "Data source not found" });
       }
 
-      // TODO: Implement actual query execution
-      // For now, return mock data
+      const dataSource = doc.data();
+      if (!dataSource) {
+        return res.status(404).json({ error: "Data source not found" });
+      }
+
+      const { type, connection } = dataSource as any;
+
       console.log(`Executing query on ${dataSourceId}:`, query);
 
-      const mockData = [
-        { id: 1, name: "Product A", quantity: 100, price: 1500 },
-        { id: 2, name: "Product B", quantity: 50, price: 2500 },
-        { id: 3, name: "Product C", quantity: 75, price: 1800 },
-      ];
+      // Apply limit to query if provided
+      let finalQuery = query;
+      if (
+        limit &&
+        !query.toLowerCase().includes("limit") &&
+        !query.toLowerCase().includes("top")
+      ) {
+        if (type === "mssql") {
+          // For MSSQL, add TOP clause
+          finalQuery = query.replace(/^SELECT\s+/i, `SELECT TOP ${limit} `);
+        } else if (type === "postgresql" || type === "mysql") {
+          // For PostgreSQL and MySQL, add LIMIT clause
+          finalQuery = `${query} LIMIT ${limit}`;
+        }
+      }
+
+      // Execute query using database connector
+      const { executeQuery } = await import("../utils/database-connectors");
+      const startTime = Date.now();
+      const result = await executeQuery(type, connection, finalQuery);
+      const executionTime = Date.now() - startTime;
 
       res.json({
-        data: mockData.slice(0, limit || 100),
-        columns: ["id", "name", "quantity", "price"],
-        rowCount: mockData.length,
-        executionTime: 125, // ms
+        data: result.data,
+        columns: result.columns,
+        rowCount: result.rowCount,
+        executionTime,
       });
     } catch (error: any) {
       console.error("Error executing query:", error);

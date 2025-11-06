@@ -192,7 +192,7 @@ export function DesignTab({
   useEffect(() => {
     if (dashboard?.selectedTable && dashboard?.dataSourceId) {
       loadTableColumns();
-      loadTablePreview();
+      // Don't auto-load preview - load on tab click instead
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashboard?.selectedTable, dashboard?.dataSourceId]);
@@ -270,7 +270,7 @@ export function DesignTab({
           dashboard.dataSourceId
         }/preview?table=${encodeURIComponent(
           dashboard.selectedTable
-        )}&limit=10`,
+        )}&limit=25`,
         {
           headers: {
             "Content-Type": "application/json",
@@ -596,328 +596,343 @@ export function DesignTab({
   }
 
   return (
-    <div className="flex flex-col gap-4 h-[calc(100vh-280px)]">
-      {/* Header with Version Management */}
-      <div className="flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="flex items-center gap-1">
-            <Database className="h-3 w-3" />
-            Table: {dashboard.selectedTable}
-          </Badge>
-          <Badge variant={isValid ? "default" : "destructive"}>
-            {isValid ? "Valid JSON" : "Invalid JSON"}
-          </Badge>
-          {hasDraftChanges && (
-            <Badge variant="secondary" className="bg-amber-100 text-amber-800">
-              Draft Changes
+    <>
+      <div className="flex flex-col gap-4 h-[calc(100vh-280px)]">
+        {/* Header with Version Management */}
+        <div className="flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="flex items-center gap-1">
+              <Database className="h-3 w-3" />
+              Table: {dashboard.selectedTable}
             </Badge>
-          )}
-          {isVersionChanged && !hasDraftChanges && (
-            <Badge variant="secondary" className="bg-blue-100 text-blue-800">
-              Viewing v{selectedVersion} (Not Active)
+            <Badge variant={isValid ? "default" : "destructive"}>
+              {isValid ? "Valid JSON" : "Invalid JSON"}
             </Badge>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* Version Selector */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" disabled={loadingVersions}>
-                📊 Version: {selectedVersion || "Loading..."}
-                <ChevronDown className="h-4 w-4 ml-2" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
-              {versions.length === 0 ? (
-                <div className="p-4 text-sm text-gray-500 text-center">
-                  No versions found
-                </div>
-              ) : (
-                versions.map((version) => (
-                  <DropdownMenuItem
-                    key={version.id}
-                    onClick={() => handleSwitchVersion(version.versionNumber)}
-                    disabled={selectedVersion === version.versionNumber}
-                  >
-                    <div className="flex flex-col w-full">
-                      <div className="flex items-center justify-between">
-                        <span className="font-mono text-sm font-semibold">
-                          {version.versionNumber}
-                        </span>
-                        <div className="flex gap-1">
-                          {version.isActive && (
-                            <Badge variant="default" className="text-xs">
-                              Active
-                            </Badge>
-                          )}
-                          {selectedVersion === version.versionNumber && (
-                            <Badge
-                              variant="secondary"
-                              className="text-xs bg-blue-100 text-blue-800"
-                            >
-                              Viewing
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                      {version.changeLog && (
-                        <p className="text-xs text-gray-500 mt-1">
-                          {version.changeLog}
-                        </p>
-                      )}
-                    </div>
-                  </DropdownMenuItem>
-                ))
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Action Buttons */}
-          <Button variant="outline" size="sm" onClick={handleCopy}>
-            <Copy className="h-4 w-4 mr-2" />
-            Copy
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleReset}>
-            <RotateCcw className="h-4 w-4 mr-2" />
-            Reset
-          </Button>
-
-          {/* Show different buttons based on state */}
-          {hasDraftChanges ? (
-            // When there are draft changes (whether viewing different version or not)
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleDiscardDraft}
-                className="text-red-600 hover:text-red-700"
+            {hasDraftChanges && (
+              <Badge
+                variant="secondary"
+                className="bg-amber-100 text-amber-800"
               >
-                Discard
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSaveDraft}
-                disabled={!isValid}
-              >
-                <Save className="h-4 w-4 mr-2" />
-                Save Draft
-              </Button>
-              <Button
-                onClick={handlePublishVersion}
-                disabled={!isValid || isSaving}
-                size="sm"
-              >
-                <Sparkles className="h-4 w-4 mr-2" />
-                {isSaving
-                  ? "Saving..."
-                  : isVersionChanged
-                  ? `Save Config for v${selectedVersion}`
-                  : "Save as New Version"}
-              </Button>
-            </>
-          ) : (
-            // Default state - no changes
-            <Button
-              onClick={handleSaveDraft}
-              disabled={!isValid}
-              size="sm"
-              variant="outline"
-            >
-              <Save className="h-4 w-4 mr-2" />
-              Save Draft
-            </Button>
-          )}
-        </div>
-      </div>
+                Draft Changes
+              </Badge>
+            )}
+            {isVersionChanged && !hasDraftChanges && (
+              <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                Viewing v{selectedVersion} (Not Active)
+              </Badge>
+            )}
+          </div>
 
-      <div className="flex gap-4 flex-1 min-h-0 overflow-hidden">
-        {/* Left - JSON Editor */}
-        <div className="flex-1 flex flex-col min-h-0">
-          <Card className="flex-1 flex flex-col min-h-0">
-            <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
-              <CardTitle className="text-base">Configuration Editor</CardTitle>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Widget
-                    <ChevronDown className="h-4 w-4 ml-2" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem onClick={() => handleAddWidget("bar")}>
-                    📊 Bar Chart
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleAddWidget("line")}>
-                    📈 Line Chart
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleAddWidget("pie")}>
-                    🥧 Pie Chart
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleAddWidget("kpi")}>
-                    🎯 KPI Card
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleAddWidget("table")}>
-                    📋 Data Table
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </CardHeader>
-            <CardContent className="flex-1 p-0 min-h-0 overflow-hidden">
-              <MonacoEditor
-                height="100%"
-                language="json"
-                value={configText}
-                onChange={(value) => handleConfigChange(value || "")}
-                theme="vs-light"
-                options={{
-                  minimap: { enabled: false },
-                  fontSize: 13,
-                  lineNumbers: "on",
-                  scrollBeyondLastLine: false,
-                  automaticLayout: true,
-                  tabSize: 2,
-                  formatOnPaste: true,
-                  formatOnType: true,
-                  quickSuggestions: true,
-                  suggest: {
-                    showWords: true,
-                    showSnippets: true,
-                  },
-                  folding: true,
-                  bracketPairColorization: {
-                    enabled: true,
-                  },
-                }}
-              />
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Right - Documentation */}
-        <div className="w-1/3 min-h-0 flex flex-col">
-          <Tabs
-            defaultValue="columns"
-            className="w-full flex-1 flex flex-col min-h-0"
-          >
-            <TabsList className="grid w-full grid-cols-3 shrink-0">
-              <TabsTrigger value="columns">Columns</TabsTrigger>
-              <TabsTrigger value="preview">
-                <Table className="h-4 w-4 mr-1" />
-                Preview
-              </TabsTrigger>
-              <TabsTrigger value="docs">
-                <BookOpen className="h-4 w-4 mr-1" />
-                Docs
-              </TabsTrigger>
-            </TabsList>
-
-            {/* Available Columns */}
-            <TabsContent value="columns" className="flex-1 overflow-hidden">
-              <Card className="h-full flex flex-col">
-                <CardHeader className="pb-3 shrink-0">
-                  <CardTitle className="text-sm">Available Columns</CardTitle>
-                </CardHeader>
-                <CardContent className="flex-1 overflow-y-auto">
-                  {loadingColumns ? (
-                    <div className="text-sm text-gray-500">Loading...</div>
-                  ) : columns.length === 0 ? (
-                    <div className="text-sm text-gray-500">
-                      No columns available
-                    </div>
-                  ) : (
-                    <div className="space-y-1">
-                      {columns.map((col) => (
-                        <div
-                          key={col.name}
-                          className="flex items-center justify-between p-2 hover:bg-gray-50 rounded text-xs cursor-pointer"
-                          onClick={() => {
-                            navigator.clipboard.writeText(col.name);
-                            toast.success(`Copied: ${col.name}`);
-                          }}
-                        >
-                          <span className="font-mono font-semibold">
-                            {col.name}
+          <div className="flex items-center gap-2">
+            {/* Version Selector */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" disabled={loadingVersions}>
+                  📊 Version: {selectedVersion || "Loading..."}
+                  <ChevronDown className="h-4 w-4 ml-2" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                {versions.length === 0 ? (
+                  <div className="p-4 text-sm text-gray-500 text-center">
+                    No versions found
+                  </div>
+                ) : (
+                  versions.map((version) => (
+                    <DropdownMenuItem
+                      key={version.id}
+                      onClick={() => handleSwitchVersion(version.versionNumber)}
+                      disabled={selectedVersion === version.versionNumber}
+                    >
+                      <div className="flex flex-col w-full">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono text-sm font-semibold">
+                            {version.versionNumber}
                           </span>
-                          <Badge variant="outline" className="text-xs">
-                            {col.type}
-                          </Badge>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            {/* Table Preview */}
-            <TabsContent value="preview" className="flex-1 overflow-hidden">
-              <Card className="h-full flex flex-col">
-                <CardHeader className="pb-3 shrink-0">
-                  <CardTitle className="text-sm">Table Preview</CardTitle>
-                </CardHeader>
-                <CardContent className="flex-1 overflow-auto">
-                  {loadingPreview ? (
-                    <div className="text-sm text-gray-500">
-                      Loading preview...
-                    </div>
-                  ) : !previewData ? (
-                    <div className="text-sm text-gray-500">
-                      Failed to load preview
-                    </div>
-                  ) : (
-                    <div className="overflow-auto">
-                      <table className="w-full text-xs border-collapse">
-                        <thead>
-                          <tr className="bg-gray-100 border-b border-gray-200">
-                            {previewData.columns.map((col) => (
-                              <th
-                                key={col}
-                                className="px-3 py-2 text-left font-semibold text-gray-800"
+                          <div className="flex gap-1">
+                            {version.isActive && (
+                              <Badge variant="default" className="text-xs">
+                                Active
+                              </Badge>
+                            )}
+                            {selectedVersion === version.versionNumber && (
+                              <Badge
+                                variant="secondary"
+                                className="text-xs bg-blue-100 text-blue-800"
                               >
-                                {col}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {previewData.rows.map((row, idx) => (
-                            <tr
-                              key={idx}
-                              className="border-b border-gray-100 hover:bg-gray-50"
-                            >
+                                Viewing
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        {version.changeLog && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            {version.changeLog}
+                          </p>
+                        )}
+                      </div>
+                    </DropdownMenuItem>
+                  ))
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Action Buttons */}
+            <Button variant="outline" size="sm" onClick={handleCopy}>
+              <Copy className="h-4 w-4 mr-2" />
+              Copy
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleReset}>
+              <RotateCcw className="h-4 w-4 mr-2" />
+              Reset
+            </Button>
+
+            {/* Show different buttons based on state */}
+            {hasDraftChanges ? (
+              // When there are draft changes (whether viewing different version or not)
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDiscardDraft}
+                  className="text-red-600 hover:text-red-700"
+                >
+                  Discard
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSaveDraft}
+                  disabled={!isValid}
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Draft
+                </Button>
+                <Button
+                  onClick={handlePublishVersion}
+                  disabled={!isValid || isSaving}
+                  size="sm"
+                >
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  {isSaving
+                    ? "Saving..."
+                    : isVersionChanged
+                    ? `Save Config for v${selectedVersion}`
+                    : "Save as New Version"}
+                </Button>
+              </>
+            ) : (
+              // Default state - no changes
+              <>
+                <Button
+                  onClick={handleSaveDraft}
+                  disabled={!isValid}
+                  size="sm"
+                  variant="outline"
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Draft
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="flex gap-4 flex-1 min-h-0 overflow-hidden">
+          {/* Left - JSON Editor */}
+          <div className="flex-1 flex flex-col min-h-0">
+            <Card className="flex-1 flex flex-col min-h-0">
+              <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-base">
+                  Configuration Editor
+                </CardTitle>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Widget
+                      <ChevronDown className="h-4 w-4 ml-2" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem onClick={() => handleAddWidget("bar")}>
+                      📊 Bar Chart
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleAddWidget("line")}>
+                      📈 Line Chart
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleAddWidget("pie")}>
+                      🥧 Pie Chart
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleAddWidget("kpi")}>
+                      🎯 KPI Card
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleAddWidget("table")}>
+                      📋 Data Table
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </CardHeader>
+              <CardContent className="flex-1 p-0 min-h-0 overflow-hidden">
+                <MonacoEditor
+                  height="100%"
+                  language="json"
+                  value={configText}
+                  onChange={(value) => handleConfigChange(value || "")}
+                  theme="vs-light"
+                  options={{
+                    minimap: { enabled: false },
+                    fontSize: 13,
+                    lineNumbers: "on",
+                    scrollBeyondLastLine: false,
+                    automaticLayout: true,
+                    tabSize: 2,
+                    formatOnPaste: true,
+                    formatOnType: true,
+                    quickSuggestions: true,
+                    suggest: {
+                      showWords: true,
+                      showSnippets: true,
+                    },
+                    folding: true,
+                    bracketPairColorization: {
+                      enabled: true,
+                    },
+                  }}
+                />
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Right - Documentation */}
+          <div className="w-1/3 min-h-0 flex flex-col">
+            <Tabs
+              defaultValue="columns"
+              className="w-full flex-1 flex flex-col min-h-0"
+              onValueChange={(value) => {
+                // Load preview only when tab is clicked
+                if (value === "preview" && !previewData && !loadingPreview) {
+                  loadTablePreview();
+                }
+              }}
+            >
+              <TabsList className="grid w-full grid-cols-3 shrink-0">
+                <TabsTrigger value="columns">Columns</TabsTrigger>
+                <TabsTrigger value="preview">
+                  <Table className="h-4 w-4 mr-1" />
+                  Preview
+                </TabsTrigger>
+                <TabsTrigger value="docs">
+                  <BookOpen className="h-4 w-4 mr-1" />
+                  Docs
+                </TabsTrigger>
+              </TabsList>
+
+              {/* Available Columns */}
+              <TabsContent value="columns" className="flex-1 overflow-hidden">
+                <Card className="h-full flex flex-col">
+                  <CardHeader className="pb-3 shrink-0">
+                    <CardTitle className="text-sm">Available Columns</CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex-1 overflow-y-auto">
+                    {loadingColumns ? (
+                      <div className="text-sm text-gray-500">Loading...</div>
+                    ) : columns.length === 0 ? (
+                      <div className="text-sm text-gray-500">
+                        No columns available
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        {columns.map((col) => (
+                          <div
+                            key={col.name}
+                            className="flex items-center justify-between p-2 hover:bg-gray-50 rounded text-xs cursor-pointer"
+                            onClick={() => {
+                              navigator.clipboard.writeText(col.name);
+                              toast.success(`Copied: ${col.name}`);
+                            }}
+                          >
+                            <span className="font-mono font-semibold">
+                              {col.name}
+                            </span>
+                            <Badge variant="outline" className="text-xs">
+                              {col.type}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* Table Preview */}
+              <TabsContent value="preview" className="flex-1 overflow-hidden">
+                <Card className="h-full flex flex-col">
+                  <CardHeader className="pb-3 shrink-0">
+                    <CardTitle className="text-sm">Table Preview</CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex-1 overflow-auto">
+                    {loadingPreview ? (
+                      <div className="text-sm text-gray-500">
+                        Loading preview...
+                      </div>
+                    ) : !previewData ? (
+                      <div className="text-sm text-gray-500">
+                        Failed to load preview
+                      </div>
+                    ) : (
+                      <div className="overflow-auto">
+                        <table className="w-full text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-gray-100 border-b border-gray-200">
                               {previewData.columns.map((col) => (
-                                <td
+                                <th
                                   key={col}
-                                  className="px-3 py-2 text-gray-700 max-w-[200px] truncate"
+                                  className="px-3 py-2 text-left font-semibold text-gray-800"
                                 >
-                                  {row[col] !== null && row[col] !== undefined
-                                    ? String(row[col])
-                                    : "-"}
-                                </td>
+                                  {col}
+                                </th>
                               ))}
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
+                          </thead>
+                          <tbody>
+                            {previewData.rows.map((row, idx) => (
+                              <tr
+                                key={idx}
+                                className="border-b border-gray-100 hover:bg-gray-50"
+                              >
+                                {previewData.columns.map((col) => (
+                                  <td
+                                    key={col}
+                                    className="px-3 py-2 text-gray-700 max-w-[200px] truncate"
+                                  >
+                                    {row[col] !== null && row[col] !== undefined
+                                      ? String(row[col])
+                                      : "-"}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
 
-            {/* Documentation */}
-            <TabsContent value="docs" className="flex-1 overflow-auto">
-              <div className="space-y-4">
-                <ConfigDocumentation />
-              </div>
-            </TabsContent>
-          </Tabs>
+              {/* Documentation */}
+              <TabsContent value="docs" className="flex-1 overflow-auto">
+                <div className="space-y-4">
+                  <ConfigDocumentation />
+                </div>
+              </TabsContent>
+            </Tabs>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 

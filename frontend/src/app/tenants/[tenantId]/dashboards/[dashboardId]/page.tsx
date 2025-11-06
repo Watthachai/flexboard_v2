@@ -35,6 +35,7 @@ import {
 import {
   getDashboardById,
   getDashboardVersions,
+  getDashboardVersion,
   getDataSources,
   updateDashboard,
   activateDashboardVersion,
@@ -47,6 +48,7 @@ import { DesignTab } from "./components/DesignTab";
 import { VersionsTab } from "./components/VersionsTab";
 import { SettingsTab } from "./components/SettingsTab";
 import { DataSourceDialog } from "./components/DataSourceDialog";
+import WidgetRenderer from "@/components/widgets/WidgetRenderer";
 
 export default function DashboardDetailPage() {
   const params = useParams();
@@ -60,6 +62,11 @@ export default function DashboardDetailPage() {
   const [activeTab, setActiveTab] = useState("design");
   const [isPublishing, setIsPublishing] = useState(false);
   const [showPublishDialog, setShowPublishDialog] = useState(false);
+
+  // Preview states
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewConfig, setPreviewConfig] = useState<any>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
 
   // Version tracking states
   const [isViewingCurrent, setIsViewingCurrent] = useState(true);
@@ -195,6 +202,44 @@ export default function DashboardDetailPage() {
     }
   };
 
+  const handlePreviewClick = async () => {
+    if (!dashboard?.currentVersion) {
+      toast.error("No version available to preview");
+      return;
+    }
+
+    try {
+      setLoadingPreview(true);
+      setPreviewOpen(true);
+
+      // Find the version ID from versions list
+      const currentVersionData = versions.find(
+        (v) => v.versionNumber === dashboard.currentVersion
+      );
+
+      if (!currentVersionData) {
+        toast.error("Version not found");
+        setPreviewOpen(false);
+        return;
+      }
+
+      // Fetch the full version data including config
+      const versionWithConfig = await getDashboardVersion(
+        tenantId,
+        dashboardId,
+        currentVersionData.id
+      );
+
+      setPreviewConfig(versionWithConfig.config);
+    } catch (error: any) {
+      console.error("Error loading preview:", error);
+      toast.error(error.message || "Failed to load preview");
+      setPreviewOpen(false);
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
+
   const handleBack = () => {
     router.push(`/tenants/${tenantId}/dashboards`);
   };
@@ -262,8 +307,16 @@ export default function DashboardDetailPage() {
         </div>
 
         <div className="flex gap-2">
-          <Button variant="outline">
-            <Eye className="mr-2 h-4 w-4" />
+          <Button
+            variant="outline"
+            onClick={handlePreviewClick}
+            disabled={loadingPreview}
+          >
+            {loadingPreview ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Eye className="mr-2 h-4 w-4" />
+            )}
             Preview
           </Button>
           {(() => {
@@ -544,6 +597,67 @@ export default function DashboardDetailPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Preview Dialog */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-w-full w-full h-full max-h-full p-0 gap-0 lg:max-w-[95vw] lg:w-[95vw] lg:max-h-[95vh] lg:p-6 overflow-hidden flex flex-col">
+          <DialogHeader className="shrink-0 p-6 pb-4 lg:p-0 lg:pb-4">
+            <DialogTitle className="flex items-center gap-2 text-2xl lg:text-3xl font-bold">
+              <Eye className="h-6 w-6" />
+              Dashboard Preview
+            </DialogTitle>
+            <DialogDescription className="text-base lg:text-lg">
+              Preview your dashboard with live data
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-auto p-6 lg:p-0 bg-gray-50">
+            {loadingPreview ? (
+              <div className="flex items-center justify-center h-64">
+                <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+              </div>
+            ) : !previewConfig ? (
+              <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                  <p className="text-gray-600 font-medium mb-2">
+                    No configuration available
+                  </p>
+                  <p className="text-sm text-gray-400">
+                    Current version: {dashboard?.currentVersion || "N/A"}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div
+                className="grid gap-4"
+                style={{
+                  gridTemplateColumns: `repeat(${
+                    previewConfig.gridCols || 12
+                  }, 1fr)`,
+                }}
+              >
+                {previewConfig.widgets
+                  ?.filter((widget: any) => widget.visible !== false)
+                  .map((widget: any) => (
+                    <div
+                      key={widget.id}
+                      style={{
+                        gridColumn: `span ${widget.position?.w || 4}`,
+                        gridRow: `span ${widget.position?.h || 4}`,
+                      }}
+                    >
+                      <WidgetRenderer
+                        widget={widget}
+                        tenantId={tenantId}
+                        dataSourceId={dashboard?.dataSourceId || ""}
+                      />
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
