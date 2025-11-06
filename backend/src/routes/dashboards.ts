@@ -39,6 +39,7 @@ const UpdateDashboardSchema = z.object({
   visibility: z.enum(["private", "public", "org"]).optional(),
   dataSourceId: z.string().optional(), // Allow updating data source
   selectedTable: z.string().optional(), // Allow updating selected table
+  currentVersion: z.string().optional(), // Allow updating current version
 });
 
 const CreateVersionSchema = z.object({
@@ -476,13 +477,10 @@ dashboardsRouter.post(
       versionParts[2] = String(Number(versionParts[2]) + 1);
       const newVersion = versionParts.join(".");
 
-      // Deactivate current version
-      const currentVersionDoc = db.doc(
-        `tenants/${tenantId}/dashboards/${dashboardId}/versions/${currentVersion}`
-      );
-      await currentVersionDoc.update({ isActive: false });
+      // NOTE: Do NOT deactivate current version
+      // Let "Publish Dashboard" button handle activation
 
-      // Create new version
+      // Create new version (NOT active by default)
       const newVersionRef = db.doc(
         `tenants/${tenantId}/dashboards/${dashboardId}/versions/${newVersion}`
       );
@@ -492,14 +490,14 @@ dashboardsRouter.post(
         versionNumber: newVersion,
         config,
         changeLog: changeLog || `Version ${newVersion}`,
-        isActive: true,
+        isActive: false, // New versions are NOT active by default
         publishedAt: new Date(),
         publishedBy: user.uid,
       };
 
       await newVersionRef.set(versionData);
 
-      // Update dashboard's current version
+      // Update dashboard's current version (but keep existing active version)
       await dashboardDoc.ref.update({
         currentVersion: newVersion,
         updatedAt: new Date(),
@@ -512,6 +510,61 @@ dashboardsRouter.post(
       });
     } catch (error: any) {
       console.error("Error creating version:", error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// ===== PUT /api/tenants/:tenantId/dashboards/:dashboardId/versions/:versionId =====
+// Update an existing version's config
+dashboardsRouter.put(
+  "/:tenantId/dashboards/:dashboardId/versions/:versionId",
+  async (req: any, res: any) => {
+    try {
+      const { tenantId, dashboardId, versionId } = req.params;
+      const { config, changeLog } = req.body;
+      const user = req.user;
+
+      // Verify user has access (Super Admin can access any tenant)
+      if (!user.isSuperAdmin && user.tenantId !== tenantId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Verify dashboard exists
+      const dashboardDoc = await db
+        .doc(`tenants/${tenantId}/dashboards/${dashboardId}`)
+        .get();
+
+      if (!dashboardDoc.exists) {
+        return res.status(404).json({ error: "Dashboard not found" });
+      }
+
+      // Verify version exists
+      const versionRef = db.doc(
+        `tenants/${tenantId}/dashboards/${dashboardId}/versions/${versionId}`
+      );
+      const versionDoc = await versionRef.get();
+
+      if (!versionDoc.exists) {
+        return res.status(404).json({ error: "Version not found" });
+      }
+
+      // Update version
+      await versionRef.update({
+        config,
+        changeLog: changeLog || `Updated v${versionId}`,
+        updatedAt: new Date(),
+        updatedBy: user.uid,
+      });
+
+      // Return updated version
+      const updatedVersion = await versionRef.get();
+      res.json({
+        id: updatedVersion.id,
+        ...updatedVersion.data(),
+      });
+    } catch (error: any) {
+      console.error("Error updating version:", error);
       res.status(500).json({ error: error.message });
     }
   }

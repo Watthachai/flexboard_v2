@@ -14,6 +14,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   ArrowLeft,
   Save,
   Eye,
@@ -27,6 +37,7 @@ import {
   getDashboardVersions,
   getDataSources,
   updateDashboard,
+  activateDashboardVersion,
 } from "@/lib/api";
 import { Dashboard, DashboardVersion, DataSource } from "@/types/dashboard";
 import { toast } from "sonner";
@@ -47,12 +58,27 @@ export default function DashboardDetailPage() {
   const [versions, setVersions] = useState<DashboardVersion[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("design");
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [showPublishDialog, setShowPublishDialog] = useState(false);
+
+  // Version tracking states
+  const [isViewingCurrent, setIsViewingCurrent] = useState(true);
+  const [viewingVersion, setViewingVersion] = useState<string>("");
 
   // Data Source states
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [selectedDataSourceId, setSelectedDataSourceId] = useState<string>("");
   const [createDataSourceOpen, setCreateDataSourceOpen] = useState(false);
   const [editDataSourceId, setEditDataSourceId] = useState<string>("");
+
+  const handleVersionChange = (data: {
+    selectedVersion: string;
+    currentVersion: string;
+    isViewingCurrent: boolean;
+  }) => {
+    setIsViewingCurrent(data.isViewingCurrent);
+    setViewingVersion(data.selectedVersion);
+  };
 
   useEffect(() => {
     loadData();
@@ -123,6 +149,49 @@ export default function DashboardDetailPage() {
 
     if (saved) {
       await loadData();
+    }
+  };
+
+  const handlePublishDashboard = async () => {
+    if (!dashboard) return;
+
+    try {
+      setIsPublishing(true);
+      setShowPublishDialog(false);
+
+      // Determine which version to activate
+      // If user is viewing an old version, activate that version AND set it as current
+      // Otherwise, activate the current version
+      const versionToActivate = isViewingCurrent
+        ? dashboard.currentVersion
+        : viewingVersion;
+
+      // If activating an old version, update dashboard's currentVersion first
+      if (!isViewingCurrent && viewingVersion) {
+        await updateDashboard(tenantId, dashboardId, {
+          currentVersion: viewingVersion,
+        });
+      }
+
+      // Activate the selected version
+      await activateDashboardVersion(tenantId, dashboardId, versionToActivate);
+
+      // Update dashboard status to active
+      await updateDashboard(tenantId, dashboardId, {
+        status: "active",
+      });
+
+      toast.success(
+        `Dashboard published! Version ${versionToActivate} is now active.`
+      );
+
+      // Reload dashboard data
+      await loadData();
+    } catch (error: any) {
+      console.error("Error publishing dashboard:", error);
+      toast.error(error.message || "Failed to publish dashboard");
+    } finally {
+      setIsPublishing(false);
     }
   };
 
@@ -197,10 +266,54 @@ export default function DashboardDetailPage() {
             <Eye className="mr-2 h-4 w-4" />
             Preview
           </Button>
-          <Button>
-            <Save className="mr-2 h-4 w-4" />
-            Save Changes
-          </Button>
+          {(() => {
+            // Check if current version is active
+            const currentVersionData = versions.find(
+              (v) => v.versionNumber === dashboard.currentVersion
+            );
+            const isCurrentVersionActive =
+              currentVersionData?.isActive || false;
+
+            // Check if user is viewing an old version (not currentVersion)
+            const isViewingOldVersion = !isViewingCurrent;
+
+            // Show publish button if:
+            // 1. Dashboard is draft, OR
+            // 2. Current version is not active yet, OR
+            // 3. User is viewing an old version (different from currentVersion)
+            const shouldShowPublish =
+              dashboard.status === "draft" ||
+              !isCurrentVersionActive ||
+              isViewingOldVersion;
+
+            if (shouldShowPublish) {
+              // Show different button text based on viewing state
+              let buttonText = "Publish Dashboard";
+
+              if (isViewingOldVersion && viewingVersion) {
+                buttonText = `Set v${viewingVersion} as Current & Publish`;
+              } else if (!isCurrentVersionActive) {
+                buttonText = `Publish v${dashboard.currentVersion}`;
+              }
+
+              return (
+                <Button
+                  onClick={() => setShowPublishDialog(true)}
+                  disabled={isPublishing}
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  {isPublishing ? "Publishing..." : buttonText}
+                </Button>
+              );
+            } else {
+              return (
+                <Button variant="outline" disabled>
+                  <Save className="mr-2 h-4 w-4" />
+                  Published
+                </Button>
+              );
+            }
+          })()}
         </div>
       </div>
 
@@ -231,7 +344,55 @@ export default function DashboardDetailPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-lg font-semibold">{dashboard.currentVersion}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-lg font-semibold">
+                {dashboard.currentVersion}
+              </p>
+              {(() => {
+                // Find active version
+                const activeVersion = versions.find((v) => v.isActive);
+                const currentVersionData = versions.find(
+                  (v) => v.versionNumber === dashboard.currentVersion
+                );
+
+                // Check if current is NOT active
+                if (
+                  activeVersion &&
+                  currentVersionData &&
+                  activeVersion.versionNumber !== dashboard.currentVersion
+                ) {
+                  return (
+                    <Badge
+                      variant="outline"
+                      className="bg-yellow-50 text-yellow-700 border-yellow-200"
+                    >
+                      Not Active
+                    </Badge>
+                  );
+                }
+
+                // Check if there are newer versions than active
+                if (activeVersion && versions.length > 0) {
+                  const activeIndex = versions.findIndex(
+                    (v) => v.versionNumber === activeVersion.versionNumber
+                  );
+                  const newerVersionsCount = activeIndex; // versions are sorted newest first
+
+                  if (newerVersionsCount > 0) {
+                    return (
+                      <Badge
+                        variant="outline"
+                        className="bg-blue-50 text-blue-700 border-blue-200"
+                      >
+                        +{newerVersionsCount} newer
+                      </Badge>
+                    );
+                  }
+                }
+
+                return null;
+              })()}
+            </div>
             <p className="text-sm text-gray-500 mt-1">
               {versions.length} total versions
             </p>
@@ -274,7 +435,13 @@ export default function DashboardDetailPage() {
 
         {/* Design Tab */}
         <TabsContent value="design" className="mt-6">
-          <DesignTab dashboard={dashboard} tenantId={tenantId} />
+          <DesignTab
+            dashboard={dashboard}
+            tenantId={tenantId}
+            dashboardId={dashboardId}
+            onUpdate={loadData}
+            onVersionChange={handleVersionChange}
+          />
         </TabsContent>
 
         {/* Versions Tab */}
@@ -325,6 +492,58 @@ export default function DashboardDetailPage() {
           />
         </DialogContent>
       </Dialog>
+
+      {/* Publish Confirmation Dialog */}
+      <AlertDialog open={showPublishDialog} onOpenChange={setShowPublishDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {isViewingCurrent
+                ? "Publish Dashboard?"
+                : `Set v${viewingVersion} as Current & Publish?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will:
+              <br />
+              <br />
+              {!isViewingCurrent && (
+                <>
+                  1. Set version <strong>{viewingVersion}</strong> as the
+                  current version
+                  <br />
+                  2. Activate version <strong>{viewingVersion}</strong>
+                  <br />
+                  3. Change dashboard status to <strong>active</strong>
+                  <br />
+                  4. Make it available for production use
+                </>
+              )}
+              {isViewingCurrent && (
+                <>
+                  1. Activate version{" "}
+                  <strong>{dashboard?.currentVersion}</strong>
+                  <br />
+                  2. Change dashboard status from <strong>draft</strong> to{" "}
+                  <strong>active</strong>
+                  <br />
+                  3. Make it available for production use
+                </>
+              )}
+              <br />
+              <br />
+              Are you sure you want to publish?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handlePublishDashboard}>
+              {isViewingCurrent
+                ? "Publish Dashboard"
+                : `Publish v${viewingVersion}`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

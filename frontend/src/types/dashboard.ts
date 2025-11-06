@@ -264,6 +264,7 @@ export interface UpdateDashboardRequest {
   visibility?: DashboardVisibility;
   dataSourceId?: string;
   selectedTable?: string;
+  currentVersion?: string;
 }
 
 export interface CreateVersionRequest {

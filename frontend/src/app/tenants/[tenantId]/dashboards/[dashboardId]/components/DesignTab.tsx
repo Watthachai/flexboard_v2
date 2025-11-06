@@ -25,7 +25,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { DashboardConfig } from "@/types/dashboard";
 import { toast } from "sonner";
-import { getDataSourceColumns, createDashboardVersion } from "@/lib/api";
+import {
+  getDataSourceColumns,
+  createDashboardVersion,
+  updateDashboardVersion,
+  getDashboardVersions,
+  getDashboardVersion,
+} from "@/lib/api";
 import { getAuth } from "firebase/auth";
 
 // Dynamically import Monaco Editor (client-side only)
@@ -43,11 +49,28 @@ interface Dashboard {
   selectedTable?: string;
   dataSourceId?: string;
   config?: DashboardConfig;
+  currentVersion?: string;
+}
+
+interface DashboardVersion {
+  id: string;
+  versionNumber: string;
+  isActive: boolean;
+  publishedAt: Date;
+  publishedBy: string;
+  changeLog?: string;
 }
 
 interface DesignTabProps {
   dashboard: Dashboard;
   tenantId: string;
+  dashboardId: string;
+  onUpdate: (data: any) => void;
+  onVersionChange?: (data: {
+    selectedVersion: string;
+    currentVersion: string;
+    isViewingCurrent: boolean;
+  }) => void;
 }
 
 interface TableColumn {
@@ -60,12 +83,53 @@ interface TablePreviewData {
   rows: any[];
 }
 
-export function DesignTab({ dashboard, tenantId }: DesignTabProps) {
+export function DesignTab({
+  dashboard,
+  tenantId,
+  dashboardId,
+  onUpdate,
+  onVersionChange,
+}: DesignTabProps) {
   const [configText, setConfigText] = useState<string>("");
   const [columns, setColumns] = useState<TableColumn[]>([]);
   const [loadingColumns, setLoadingColumns] = useState(false);
   const [isValid, setIsValid] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Version management states
+  const [versions, setVersions] = useState<DashboardVersion[]>([]);
+  const [selectedVersion, setSelectedVersion] = useState<string>("");
+  const [activeVersion, setActiveVersion] = useState<string>("");
+  const [currentVersion, setCurrentVersion] = useState<string>("");
+  const [loadingVersions, setLoadingVersions] = useState(false);
+  const [hasDraftChanges, setHasDraftChanges] = useState(false);
+  const [originalConfig, setOriginalConfig] = useState<string>("");
+  const [isVersionChanged, setIsVersionChanged] = useState(false);
+
+  // Notify parent when version selection changes
+  useEffect(() => {
+    if (selectedVersion && currentVersion && onVersionChange) {
+      onVersionChange({
+        selectedVersion,
+        currentVersion,
+        isViewingCurrent: selectedVersion === currentVersion,
+      });
+    }
+  }, [selectedVersion, currentVersion, onVersionChange]);
+
+  // Set current version from dashboard
+  useEffect(() => {
+    if (dashboard.currentVersion) {
+      setCurrentVersion(dashboard.currentVersion);
+    }
+  }, [dashboard.currentVersion]);
+
+  // Set selected version to current version initially
+  useEffect(() => {
+    if (currentVersion && !selectedVersion) {
+      setSelectedVersion(currentVersion);
+    }
+  }, [currentVersion, selectedVersion]);
 
   // Table preview states
   const [previewData, setPreviewData] = useState<TablePreviewData | null>(null);
@@ -110,11 +174,18 @@ export function DesignTab({ dashboard, tenantId }: DesignTabProps) {
       dashboard.config.widgets &&
       dashboard.config.widgets.length > 0
     ) {
-      setConfigText(JSON.stringify(dashboard.config, null, 2));
+      const configStr = JSON.stringify(dashboard.config, null, 2);
+      setConfigText(configStr);
+      setOriginalConfig(configStr);
     } else {
       // Use default config if no widgets or config is empty
-      setConfigText(JSON.stringify(defaultConfig, null, 2));
+      const configStr = JSON.stringify(defaultConfig, null, 2);
+      setConfigText(configStr);
+      setOriginalConfig(configStr);
     }
+
+    // Load versions
+    loadVersions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashboard.config, dashboard.selectedTable]);
 
@@ -125,6 +196,26 @@ export function DesignTab({ dashboard, tenantId }: DesignTabProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashboard?.selectedTable, dashboard?.dataSourceId]);
+
+  // Load all versions
+  const loadVersions = async () => {
+    try {
+      setLoadingVersions(true);
+      const data = await getDashboardVersions(tenantId, dashboard.id);
+      setVersions(data || []);
+
+      // Set selected version to current active version
+      const activeVer = data?.find((v: DashboardVersion) => v.isActive);
+      if (activeVer) {
+        setSelectedVersion(activeVer.versionNumber);
+        setActiveVersion(activeVer.versionNumber);
+      }
+    } catch (error: any) {
+      console.error("Error loading versions:", error);
+    } finally {
+      setLoadingVersions(false);
+    }
+  };
 
   const loadTableColumns = async () => {
     if (!dashboard.dataSourceId || !dashboard.selectedTable) return;
@@ -198,9 +289,9 @@ export function DesignTab({ dashboard, tenantId }: DesignTabProps) {
         columns: result.columns || [],
         rows: result.data || [],
       });
-    } catch (err: any) {
-      console.error("Error loading preview:", err);
-      toast.error(err.message || "Failed to load table preview");
+    } catch {
+      console.error("Error loading preview");
+      toast.error("Failed to load table preview");
       setPreviewData(null);
     } finally {
       setLoadingPreview(false);
@@ -212,12 +303,29 @@ export function DesignTab({ dashboard, tenantId }: DesignTabProps) {
     try {
       JSON.parse(value);
       setIsValid(true);
+
+      // Check if config has changed from original
+      setHasDraftChanges(value !== originalConfig);
     } catch {
       setIsValid(false);
     }
   };
 
-  const handleSave = async () => {
+  // Save as draft (update current config without creating new version)
+  const handleSaveDraft = () => {
+    if (!isValid) {
+      toast.error("Invalid JSON format. Please fix the errors first.");
+      return;
+    }
+
+    // Just update the original config to mark as saved
+    setOriginalConfig(configText);
+    setHasDraftChanges(false);
+    toast.success("Draft saved locally!");
+  };
+
+  // Publish as new version OR update existing version
+  const handlePublishVersion = async () => {
     if (!isValid) {
       toast.error("Invalid JSON format. Please fix the errors first.");
       return;
@@ -227,29 +335,97 @@ export function DesignTab({ dashboard, tenantId }: DesignTabProps) {
       setIsSaving(true);
       const config = JSON.parse(configText);
 
-      // Save config by creating a new version
-      const result = await createDashboardVersion(tenantId, dashboard.id, {
-        config,
-        changeLog: "Configuration updated from Design Tab",
-      });
+      // Check if we're updating an existing version or creating new one
+      if (isVersionChanged && selectedVersion) {
+        // UPDATE existing version
+        const result = await updateDashboardVersion(
+          tenantId,
+          dashboardId,
+          selectedVersion,
+          {
+            config,
+            changeLog: `Updated configuration for v${selectedVersion}`,
+          }
+        );
 
-      console.log("Configuration saved:", result);
-      toast.success("Configuration saved successfully!");
-    } catch (err: any) {
-      console.error("Error saving config:", err);
-      if (err.message.includes("Unexpected token")) {
-        toast.error("Invalid JSON format. Please fix the errors.");
+        console.log("Version updated:", result);
+        toast.success(
+          `Version ${selectedVersion} updated! Use "Publish Dashboard" button above to activate it.`
+        );
       } else {
-        toast.error(err.message || "Failed to save configuration");
+        // CREATE new version
+        const result = await createDashboardVersion(tenantId, dashboardId, {
+          config,
+          changeLog: `Updated configuration`,
+        });
+
+        console.log("Version created:", result);
+        toast.success(
+          `Version ${result.versionNumber} created! Use "Publish Dashboard" button above to activate it.`
+        );
       }
+
+      // Reload versions and update state
+      await loadVersions();
+      setOriginalConfig(configText);
+      setHasDraftChanges(false);
+      setIsVersionChanged(false);
+
+      // Notify parent to refresh
+      if (onUpdate) {
+        onUpdate({});
+      }
+    } catch (err: any) {
+      console.error("Error saving version:", err);
+      toast.error(err.message || "Failed to save version");
     } finally {
       setIsSaving(false);
     }
   };
 
+  // Preview version (load config without activating)
+  const handleSwitchVersion = async (versionNumber: string) => {
+    try {
+      setLoadingVersions(true);
+
+      // Fetch the config for this version
+      const versionData = await getDashboardVersion(
+        tenantId,
+        dashboard.id,
+        versionNumber
+      );
+
+      if (versionData && versionData.config) {
+        const configStr = JSON.stringify(versionData.config, null, 2);
+        setConfigText(configStr);
+        setOriginalConfig(configStr);
+        setSelectedVersion(versionNumber);
+        setIsVersionChanged(versionNumber !== activeVersion);
+        setHasDraftChanges(false);
+
+        toast.success(`Loaded version ${versionNumber}`);
+      }
+    } catch (err: any) {
+      console.error("Error loading version:", err);
+      toast.error(err.message || "Failed to load version");
+    } finally {
+      setLoadingVersions(false);
+    }
+  };
+
+  // Discard draft changes
+  const handleDiscardDraft = () => {
+    setConfigText(originalConfig);
+    setHasDraftChanges(false);
+    toast.info("Draft changes discarded");
+  };
+
   const handleReset = () => {
-    setConfigText(JSON.stringify(defaultConfig, null, 2));
+    const configStr = JSON.stringify(defaultConfig, null, 2);
+    setConfigText(configStr);
+    setOriginalConfig(configStr);
     setIsValid(true);
+    setHasDraftChanges(false);
     toast.info("Configuration reset to default");
   };
 
@@ -373,7 +549,7 @@ export function DesignTab({ dashboard, tenantId }: DesignTabProps) {
       toast.success(
         `${type.charAt(0).toUpperCase() + type.slice(1)} chart added!`
       );
-    } catch (err) {
+    } catch {
       toast.error("Invalid JSON. Please fix errors first.");
     }
   };
@@ -421,7 +597,7 @@ export function DesignTab({ dashboard, tenantId }: DesignTabProps) {
 
   return (
     <div className="flex flex-col gap-4 h-[calc(100vh-280px)]">
-      {/* Header */}
+      {/* Header with Version Management */}
       <div className="flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="flex items-center gap-1">
@@ -431,8 +607,73 @@ export function DesignTab({ dashboard, tenantId }: DesignTabProps) {
           <Badge variant={isValid ? "default" : "destructive"}>
             {isValid ? "Valid JSON" : "Invalid JSON"}
           </Badge>
+          {hasDraftChanges && (
+            <Badge variant="secondary" className="bg-amber-100 text-amber-800">
+              Draft Changes
+            </Badge>
+          )}
+          {isVersionChanged && !hasDraftChanges && (
+            <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+              Viewing v{selectedVersion} (Not Active)
+            </Badge>
+          )}
         </div>
-        <div className="flex gap-2">
+
+        <div className="flex items-center gap-2">
+          {/* Version Selector */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" disabled={loadingVersions}>
+                📊 Version: {selectedVersion || "Loading..."}
+                <ChevronDown className="h-4 w-4 ml-2" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              {versions.length === 0 ? (
+                <div className="p-4 text-sm text-gray-500 text-center">
+                  No versions found
+                </div>
+              ) : (
+                versions.map((version) => (
+                  <DropdownMenuItem
+                    key={version.id}
+                    onClick={() => handleSwitchVersion(version.versionNumber)}
+                    disabled={selectedVersion === version.versionNumber}
+                  >
+                    <div className="flex flex-col w-full">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-sm font-semibold">
+                          {version.versionNumber}
+                        </span>
+                        <div className="flex gap-1">
+                          {version.isActive && (
+                            <Badge variant="default" className="text-xs">
+                              Active
+                            </Badge>
+                          )}
+                          {selectedVersion === version.versionNumber && (
+                            <Badge
+                              variant="secondary"
+                              className="text-xs bg-blue-100 text-blue-800"
+                            >
+                              Viewing
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      {version.changeLog && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          {version.changeLog}
+                        </p>
+                      )}
+                    </div>
+                  </DropdownMenuItem>
+                ))
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Action Buttons */}
           <Button variant="outline" size="sm" onClick={handleCopy}>
             <Copy className="h-4 w-4 mr-2" />
             Copy
@@ -441,10 +682,53 @@ export function DesignTab({ dashboard, tenantId }: DesignTabProps) {
             <RotateCcw className="h-4 w-4 mr-2" />
             Reset
           </Button>
-          <Button onClick={handleSave} disabled={!isValid || isSaving}>
-            <Save className="h-4 w-4 mr-2" />
-            {isSaving ? "Saving..." : "Save Config"}
-          </Button>
+
+          {/* Show different buttons based on state */}
+          {hasDraftChanges ? (
+            // When there are draft changes (whether viewing different version or not)
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDiscardDraft}
+                className="text-red-600 hover:text-red-700"
+              >
+                Discard
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSaveDraft}
+                disabled={!isValid}
+              >
+                <Save className="h-4 w-4 mr-2" />
+                Save Draft
+              </Button>
+              <Button
+                onClick={handlePublishVersion}
+                disabled={!isValid || isSaving}
+                size="sm"
+              >
+                <Sparkles className="h-4 w-4 mr-2" />
+                {isSaving
+                  ? "Saving..."
+                  : isVersionChanged
+                  ? `Save Config for v${selectedVersion}`
+                  : "Save as New Version"}
+              </Button>
+            </>
+          ) : (
+            // Default state - no changes
+            <Button
+              onClick={handleSaveDraft}
+              disabled={!isValid}
+              size="sm"
+              variant="outline"
+            >
+              <Save className="h-4 w-4 mr-2" />
+              Save Draft
+            </Button>
+          )}
         </div>
       </div>
 

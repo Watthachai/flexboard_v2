@@ -311,6 +311,7 @@ export async function updateDashboard(
     visibility?: "private" | "public" | "org";
     dataSourceId?: string;
     selectedTable?: string;
+    currentVersion?: string;
   }
 ): Promise<any> {
   return fetcher(`/api/tenants/${tenantId}/dashboards/${dashboardId}`, {
@@ -369,6 +370,27 @@ export async function createDashboardVersion(
     `/api/tenants/${tenantId}/dashboards/${dashboardId}/versions`,
     {
       method: "POST",
+      body: JSON.stringify(data),
+    }
+  );
+}
+
+/**
+ * Update existing version
+ */
+export async function updateDashboardVersion(
+  tenantId: string,
+  dashboardId: string,
+  versionId: string,
+  data: {
+    config: any;
+    changeLog?: string;
+  }
+): Promise<any> {
+  return fetcher(
+    `/api/tenants/${tenantId}/dashboards/${dashboardId}/versions/${versionId}`,
+    {
+      method: "PUT",
       body: JSON.stringify(data),
     }
   );
