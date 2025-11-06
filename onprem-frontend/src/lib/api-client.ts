@@ -215,7 +215,11 @@ export async function getWidgetData(
     if (dataConfig.yField) fields.push(dataConfig.yField);
 
     const selectClause = fields.length > 0 ? fields.join(", ") : "*";
-    query = `SELECT ${selectClause} FROM ${dataConfig.table}`;
+
+    // For MSSQL, we need to use TOP instead of LIMIT
+    // Add TOP right after SELECT if limit is specified
+    const topClause = dataConfig.limit ? `TOP ${dataConfig.limit} ` : "";
+    query = `SELECT ${topClause}${selectClause} FROM ${dataConfig.table}`;
 
     // Add filters
     if (dataConfig.filters && dataConfig.filters.length > 0) {
@@ -238,10 +242,7 @@ export async function getWidgetData(
       query += ` ORDER BY ${orderClause}`;
     }
 
-    // Add limit
-    if (dataConfig.limit) {
-      query += ` LIMIT ${dataConfig.limit}`;
-    }
+    // Note: LIMIT removed - using TOP for MSSQL compatibility
   } else {
     throw new Error("Either table or query must be provided in dataConfig");
   }

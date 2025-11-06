@@ -306,15 +306,33 @@ onpremRouter.post(
         return res.status(404).json({ error: "Data source data not found" });
       }
 
+      console.log(
+        `🔍 [OnPrem] Datasource data:`,
+        JSON.stringify(dsData, null, 2)
+      );
+      console.log(
+        `🔍 [OnPrem] Type: ${dsData.type}, Connection:`,
+        dsData.connection
+      );
+      console.log(`📝 [OnPrem] Query received:`, query);
+
       // Import database connector
       const { executeQuery } = await import("../utils/database-connectors");
 
-      // Execute query
-      const result = await executeQuery(dsData.type, dsData.config, query);
+      // Execute query with timeout (use 'connection' not 'config')
+      console.log(`⏳ [OnPrem] Executing query...`);
+      const startTime = Date.now();
+
+      const result = await executeQuery(dsData.type, dsData.connection, query);
+
+      const duration = Date.now() - startTime;
+      console.log(`✅ [OnPrem] Query executed successfully in ${duration}ms`);
+      console.log(`📊 [OnPrem] Returned ${result.data?.length || 0} rows`);
 
       res.json(result);
     } catch (error: any) {
-      console.error("Error executing query:", error);
+      console.error("❌ Query execution error:", error);
+      console.error("Stack trace:", error.stack);
       res.status(500).json({ error: error.message });
     }
   }

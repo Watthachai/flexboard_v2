@@ -6,6 +6,9 @@
  * npm install mssql mysql2 pg mongodb
  */
 
+// Global connection pools cache
+const connectionPools = new Map<string, any>();
+
 interface ConnectionConfig {
   host?: string;
   port?: number;
@@ -437,6 +440,60 @@ export async function testDatabaseConnection(
 }
 
 /**
+ * Get or create connection pool for MSSQL
+ */
+async function getMSSQLPool(config: ConnectionConfig) {
+  const sql = await import("mssql");
+  const mssql = sql.default || sql;
+
+  // Create unique key for this connection
+  const poolKey = `mssql://${config.username}@${config.host}:${config.port}/${config.database}`;
+
+  // Return existing pool if available
+  if (connectionPools.has(poolKey)) {
+    const pool = connectionPools.get(poolKey);
+    // Check if pool is connected
+    if (pool && pool.connected) {
+      return pool;
+    }
+    // Remove dead pool
+    connectionPools.delete(poolKey);
+  }
+
+  // Create new pool
+  const poolConfig = {
+    server: config.host || "",
+    port: config.port || 1433,
+    database: config.database || "",
+    user: config.username || "",
+    password: config.password || "",
+    options: {
+      encrypt: config.ssl !== false,
+      trustServerCertificate: true,
+      enableArithAbort: true,
+    },
+    pool: {
+      max: 20, // Increased from 10 to 20 for concurrent requests
+      min: 2, // Keep 2 connections warm
+      idleTimeoutMillis: 60000, // Keep connections for 60 seconds
+    },
+    connectionTimeout: 30000, // 30 seconds
+    requestTimeout: 30000, // 30 seconds
+  };
+
+  const pool = await mssql.connect(poolConfig);
+  connectionPools.set(poolKey, pool);
+
+  // Handle pool errors
+  pool.on("error", (err: any) => {
+    console.error("MSSQL Pool error:", err);
+    connectionPools.delete(poolKey);
+  });
+
+  return pool;
+}
+
+/**
  * Execute Query on Database
  */
 export async function executeQuery(
@@ -451,23 +508,9 @@ export async function executeQuery(
 }> {
   try {
     if (type === "mssql") {
-      const sql = await import("mssql");
-      const mssql = sql.default || sql;
-
-      const pool = await mssql.connect({
-        server: config.host || "",
-        port: config.port || 1433,
-        database: config.database || "",
-        user: config.username || "",
-        password: config.password || "",
-        options: {
-          encrypt: config.ssl !== false,
-          trustServerCertificate: true,
-        },
-      });
-
+      // Use shared connection pool instead of creating new one each time
+      const pool = await getMSSQLPool(config);
       const result = await pool.request().query(query);
-      await pool.close();
 
       return {
         data: result.recordset || [],
@@ -475,6 +518,7 @@ export async function executeQuery(
           result.recordset.length > 0 ? Object.keys(result.recordset[0]) : [],
         rowCount: result.recordset.length,
       };
+      // NOTE: Don't close the pool - it's reused across requests
     } else if (type === "mysql") {
       const mysql = await import("mysql2/promise");
 
