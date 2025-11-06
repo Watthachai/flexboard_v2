@@ -782,10 +782,10 @@ export function DesignTab({
                   language="json"
                   value={configText}
                   onChange={(value) => handleConfigChange(value || "")}
-                  theme="vs-light"
+                  theme="vs-dark"
                   options={{
-                    minimap: { enabled: false },
-                    fontSize: 13,
+                    minimap: { enabled: true },
+                    fontSize: 14,
                     lineNumbers: "on",
                     scrollBeyondLastLine: false,
                     automaticLayout: true,
@@ -801,6 +801,13 @@ export function DesignTab({
                     bracketPairColorization: {
                       enabled: true,
                     },
+                    fontFamily:
+                      "'Fira Code', 'Cascadia Code', 'Consolas', 'Monaco', monospace",
+                    fontLigatures: true,
+                    cursorBlinking: "smooth",
+                    cursorSmoothCaretAnimation: "on",
+                    smoothScrolling: true,
+                    padding: { top: 16, bottom: 16 },
                   }}
                 />
               </CardContent>

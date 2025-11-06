@@ -13,8 +13,9 @@ import {
   Copy,
   Check,
   Lightbulb,
-  Wand2,
   Settings,
+  Undo2,
+  FileJson,
 } from "lucide-react";
 import {
   Select,
@@ -25,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { generateConfigWithAI, chatWithAI } from "@/lib/api";
 import { toast } from "sonner";
+import ReactMarkdown from "react-markdown";
 
 interface Message {
   role: "user" | "assistant";
@@ -106,7 +108,7 @@ export function AIConfigAssistant({
               )
             );
           }
-        }, 10); // Typing speed (10ms per character = very fast!)
+        }); // Typing speed (10ms per character = very fast!)
 
         return () => {
           if (typingIntervalRef.current) {
@@ -325,6 +327,99 @@ export function AIConfigAssistant({
     setInput(suggestion);
   };
 
+  // Generate JSON with comments showing changes
+  const generateJsonWithComments = (oldConfig: any, newConfig: any) => {
+    if (!oldConfig || !newConfig) return JSON.stringify(newConfig, null, 2);
+
+    const changes = getConfigChanges(oldConfig, newConfig);
+    const lines: string[] = [];
+    const configStr = JSON.stringify(newConfig, null, 2);
+    const configLines = configStr.split("\n");
+
+    configLines.forEach((line, index) => {
+      lines.push(line);
+
+      // Check if this line contains a changed value
+      changes.forEach((change) => {
+        if (change.type === "modified" && change.newValue) {
+          // Check if this line contains the new color value
+          if (line.includes(`"color": "${change.newValue}"`)) {
+            // Add comment after this line
+            const indent = line.match(/^\s*/)?.[0] || "";
+            lines.push(
+              `${indent}// เปลี่ยนจาก ${change.oldValue} เป็น ${change.newValue} แล้ว`
+            );
+          }
+        }
+      });
+    });
+
+    return lines.join("\n");
+  };
+
+  // Calculate config changes for diff view
+  const getConfigChanges = (oldConfig: any, newConfig: any) => {
+    const changes: Array<{
+      type: "added" | "removed" | "modified";
+      path: string;
+      oldValue?: any;
+      newValue?: any;
+      widget?: string;
+    }> = [];
+
+    // Compare widgets
+    const oldWidgets = oldConfig?.widgets || [];
+    const newWidgets = newConfig?.widgets || [];
+
+    newWidgets.forEach((newWidget: any) => {
+      const oldWidget = oldWidgets.find((w: any) => w.id === newWidget.id);
+
+      if (!oldWidget) {
+        // Widget added
+        changes.push({
+          type: "added",
+          path: `widgets.${newWidget.id}`,
+          newValue: newWidget.title,
+          widget: newWidget.title,
+        });
+      } else {
+        // Check for modifications
+        if (
+          JSON.stringify(oldWidget.styleConfig) !==
+          JSON.stringify(newWidget.styleConfig)
+        ) {
+          // Style changed
+          const oldColor = oldWidget.styleConfig?.color;
+          const newColor = newWidget.styleConfig?.color;
+          if (oldColor !== newColor) {
+            changes.push({
+              type: "modified",
+              path: `${newWidget.title}.styleConfig.color`,
+              oldValue: oldColor,
+              newValue: newColor,
+              widget: newWidget.title,
+            });
+          }
+        }
+      }
+    });
+
+    // Check for removed widgets
+    oldWidgets.forEach((oldWidget: any) => {
+      const exists = newWidgets.find((w: any) => w.id === oldWidget.id);
+      if (!exists) {
+        changes.push({
+          type: "removed",
+          path: `widgets.${oldWidget.id}`,
+          oldValue: oldWidget.title,
+          widget: oldWidget.title,
+        });
+      }
+    });
+
+    return changes;
+  };
+
   const handleCopyConfig = (config: any, index: number) => {
     navigator.clipboard.writeText(JSON.stringify(config, null, 2));
     setCopiedIndex(index);
@@ -422,31 +517,155 @@ export function AIConfigAssistant({
                       : "bg-gray-100 text-gray-900"
                   }`}
                 >
-                  <div className="whitespace-pre-wrap text-sm">
-                    {message.isTyping && index === typingMessageIndex
-                      ? displayedContent
-                      : message.content}
-                    {message.isTyping && index === typingMessageIndex && (
-                      <span className="inline-block w-1 h-4 bg-current ml-0.5 animate-pulse" />
+                  {/* Message Content with Markdown */}
+                  <div className="text-sm prose prose-sm max-w-none">
+                    {message.isTyping && index === typingMessageIndex ? (
+                      <>
+                        {displayedContent}
+                        <span className="inline-block w-1 h-4 bg-current ml-0.5 animate-pulse" />
+                      </>
+                    ) : (
+                      <ReactMarkdown
+                        components={{
+                          // Inline code (for colors)
+                          code: ({ className, children, ...props }) => {
+                            // Check if this is inline code by looking at className
+                            const isInline = !className?.includes("language-");
+                            return isInline ? (
+                              <code
+                                className="px-1.5 py-0.5 rounded text-xs font-mono bg-gray-800 text-white"
+                                {...props}
+                              >
+                                {children}
+                              </code>
+                            ) : (
+                              <code
+                                className="block px-2 py-1 rounded text-xs font-mono bg-gray-800 text-white overflow-x-auto"
+                                {...props}
+                              >
+                                {children}
+                              </code>
+                            );
+                          },
+                          // Bold text
+                          strong: ({ children, ...props }) => (
+                            <strong className="font-bold" {...props}>
+                              {children}
+                            </strong>
+                          ),
+                          // Lists
+                          ul: ({ children, ...props }) => (
+                            <ul className="list-disc ml-4 space-y-1" {...props}>
+                              {children}
+                            </ul>
+                          ),
+                          li: ({ children, ...props }) => (
+                            <li className="text-sm" {...props}>
+                              {children}
+                            </li>
+                          ),
+                        }}
+                      >
+                        {message.content}
+                      </ReactMarkdown>
                     )}
                   </div>
 
-                  {/* Config Preview - show only after typing is done */}
-                  {message.config && !message.isTyping && (
+                  {/* Config Changes (Diff View) - show only after typing is done */}
+                  {message.config && !message.isTyping && currentConfig && (
                     <div className="mt-3 space-y-2">
-                      <div className="bg-white/10 backdrop-blur-sm rounded p-2 border border-gray-300">
-                        <pre className="text-xs overflow-x-auto max-h-40">
-                          {JSON.stringify(message.config, null, 2)}
+                      {/* Preview with Comments */}
+                      <div className="bg-gray-900 rounded-lg p-4 border border-gray-700 overflow-x-auto">
+                        <div className="flex items-center gap-2 mb-3">
+                          <FileJson className="h-4 w-4 text-blue-400" />
+                          <span className="font-semibold text-sm text-white">
+                            Preview: JSON Config with Changes
+                          </span>
+                        </div>
+                        <pre className="text-xs font-mono text-gray-300 whitespace-pre overflow-x-auto">
+                          {generateJsonWithComments(
+                            currentConfig,
+                            message.config
+                          )}
                         </pre>
                       </div>
+
+                      {/* Changes Summary */}
+                      <div className="bg-white rounded-lg p-3 border border-gray-200">
+                        <div className="flex items-center gap-2 mb-2">
+                          <FileJson className="h-4 w-4 text-blue-600" />
+                          <span className="font-semibold text-sm">
+                            การเปลี่ยนแปลง
+                          </span>
+                        </div>
+                        {getConfigChanges(currentConfig, message.config).map(
+                          (change, idx) => (
+                            <div
+                              key={idx}
+                              className={`text-xs py-1.5 px-2 rounded mb-1 ${
+                                change.type === "added"
+                                  ? "bg-green-50 border-l-2 border-green-500"
+                                  : change.type === "removed"
+                                  ? "bg-red-50 border-l-2 border-red-500"
+                                  : "bg-yellow-50 border-l-2 border-yellow-500"
+                              }`}
+                            >
+                              <div className="font-semibold">
+                                {change.widget}
+                              </div>
+                              {change.type === "modified" && (
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className="text-red-600 line-through">
+                                    {change.oldValue}
+                                  </span>
+                                  <span>→</span>
+                                  <span className="text-green-600 font-semibold">
+                                    {change.newValue}
+                                  </span>
+                                  {change.newValue && (
+                                    <div
+                                      className="w-4 h-4 rounded border border-gray-300"
+                                      style={{
+                                        backgroundColor: change.newValue,
+                                      }}
+                                    />
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        )}
+                      </div>
+
+                      {/* Action Buttons */}
                       <div className="flex gap-2">
+                        {onApplyConfig && (
+                          <>
+                            <Button
+                              size="sm"
+                              onClick={() => handleApplyConfig(message.config)}
+                              className="flex-1 bg-green-600 hover:bg-green-700"
+                            >
+                              <Check className="h-3 w-3 mr-1" />
+                              Apply Changes
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => toast.info("Undo not implemented")}
+                              className="flex-1"
+                            >
+                              <Undo2 className="h-3 w-3 mr-1" />
+                              Undo
+                            </Button>
+                          </>
+                        )}
                         <Button
                           size="sm"
                           variant="secondary"
                           onClick={() =>
                             handleCopyConfig(message.config, index)
                           }
-                          className="flex-1"
                         >
                           {copiedIndex === index ? (
                             <>
@@ -456,20 +675,10 @@ export function AIConfigAssistant({
                           ) : (
                             <>
                               <Copy className="h-3 w-3 mr-1" />
-                              Copy JSON
+                              JSON
                             </>
                           )}
                         </Button>
-                        {onApplyConfig && (
-                          <Button
-                            size="sm"
-                            onClick={() => handleApplyConfig(message.config)}
-                            className="flex-1"
-                          >
-                            <Wand2 className="h-3 w-3 mr-1" />
-                            Apply to Editor
-                          </Button>
-                        )}
                       </div>
                     </div>
                   )}
