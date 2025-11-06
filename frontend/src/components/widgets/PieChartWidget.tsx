@@ -1,6 +1,14 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 
 interface PieChartWidgetProps {
   widget: any;
@@ -9,51 +17,59 @@ interface PieChartWidgetProps {
 
 export default function PieChartWidget({ widget, data }: PieChartWidgetProps) {
   const { title, dataConfig, styleConfig } = widget;
-  const { xField, yField } = dataConfig || {};
+  const { xField, yField, aggregation } = dataConfig || {};
 
-  // Extract chart data
+  // Extract and format chart data
   const chartData = data.data.map((row) => ({
     name: row[xField] || "Unknown",
     value: parseFloat(row[yField]) || 0,
   }));
 
-  const total = chartData.reduce((sum, item) => sum + item.value, 0);
   const colors = styleConfig?.colors || [
     "#3b82f6",
     "#8b5cf6",
     "#ec4899",
     "#f59e0b",
     "#10b981",
+    "#06b6d4",
+    "#84cc16",
   ];
+  const showLegend = styleConfig?.showLegend !== false;
 
   return (
-    <Card className="h-full">
-      <CardHeader>
-        <CardTitle>{title || "Pie Chart"}</CardTitle>
+    <Card className="h-full flex flex-col">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-lg">{title || "Pie Chart"}</CardTitle>
+        {aggregation && (
+          <p className="text-xs text-gray-500">Aggregation: {aggregation}</p>
+        )}
       </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          {chartData.map((item, index) => {
-            const percentage = ((item.value / total) * 100).toFixed(1);
-            return (
-              <div key={index} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div
-                    className="w-4 h-4 rounded"
-                    style={{ backgroundColor: colors[index % colors.length] }}
-                  />
-                  <span className="text-sm text-gray-600">{item.name}</span>
-                </div>
-                <div className="text-right">
-                  <div className="font-medium">
-                    {item.value.toLocaleString()}
-                  </div>
-                  <div className="text-xs text-gray-400">{percentage}%</div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+      <CardContent className="flex-1 pt-2">
+        <ResponsiveContainer width="100%" height="100%" minHeight={200}>
+          <PieChart>
+            <Pie
+              data={chartData}
+              cx="50%"
+              cy="50%"
+              labelLine={false}
+              label={({ name, percent }: any) =>
+                `${name}: ${(percent * 100).toFixed(0)}%`
+              }
+              outerRadius={80}
+              fill="#8884d8"
+              dataKey="value"
+            >
+              {chartData.map((entry, index) => (
+                <Cell
+                  key={`cell-${index}`}
+                  fill={colors[index % colors.length]}
+                />
+              ))}
+            </Pie>
+            <Tooltip />
+            {showLegend && <Legend />}
+          </PieChart>
+        </ResponsiveContainer>
       </CardContent>
     </Card>
   );

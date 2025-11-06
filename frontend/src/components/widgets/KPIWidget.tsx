@@ -39,6 +39,9 @@ export default function KPIWidget({ widget, data }: KPIWidgetProps) {
     styleConfig?.backgroundColor ||
     "bg-gradient-to-br from-blue-50 to-blue-100";
 
+  const prefix = styleConfig?.prefix || "";
+  const suffix = styleConfig?.suffix || "";
+
   return (
     <Card className={`h-full ${bgColor}`}>
       <CardHeader>
@@ -49,7 +52,9 @@ export default function KPIWidget({ widget, data }: KPIWidgetProps) {
       <CardContent>
         <div className="space-y-2">
           <div className="text-4xl font-bold">
+            {prefix}
             {numericValue.toLocaleString()}
+            {suffix}
           </div>
           {data.data.length > 1 && (
             <div className={`flex items-center gap-1 text-sm ${trendColor}`}>
@@ -62,9 +67,6 @@ export default function KPIWidget({ widget, data }: KPIWidgetProps) {
               </span>
             </div>
           )}
-          <div className="text-xs text-gray-500">
-            {styleConfig?.unit || "units"}
-          </div>
         </div>
       </CardContent>
     </Card>

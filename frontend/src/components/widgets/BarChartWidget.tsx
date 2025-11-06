@@ -1,6 +1,16 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 
 interface BarChartWidgetProps {
   widget: any;
@@ -9,51 +19,44 @@ interface BarChartWidgetProps {
 
 export default function BarChartWidget({ widget, data }: BarChartWidgetProps) {
   const { title, dataConfig, styleConfig } = widget;
-  const { xField, yField } = dataConfig || {};
+  const { xField, yField, aggregation } = dataConfig || {};
 
-  // Extract chart data
+  // Extract and format chart data
   const chartData = data.data.map((row) => ({
-    name: row[xField] || "Unknown",
-    value: parseFloat(row[yField]) || 0,
+    [xField || "name"]: row[xField] || "Unknown",
+    [yField || "value"]: parseFloat(row[yField]) || 0,
   }));
 
-  // Simple bar chart using CSS
-  const maxValue = Math.max(...chartData.map((d) => d.value));
-  const colors = styleConfig?.colors || [
-    "#3b82f6",
-    "#8b5cf6",
-    "#ec4899",
-    "#f59e0b",
-    "#10b981",
-  ];
+  const colors = styleConfig?.colors || ["#3b82f6"];
+  const color = styleConfig?.color || colors[0];
+  const showGrid = styleConfig?.showGrid !== false;
+  const showLegend = styleConfig?.showLegend !== false;
 
   return (
-    <Card className="h-full">
-      <CardHeader>
-        <CardTitle>{title || "Bar Chart"}</CardTitle>
+    <Card className="h-full flex flex-col">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-lg">{title || "Bar Chart"}</CardTitle>
+        {aggregation && (
+          <p className="text-xs text-gray-500">Aggregation: {aggregation}</p>
+        )}
       </CardHeader>
-      <CardContent>
-        <div className="space-y-2">
-          {chartData.map((item, index) => (
-            <div key={index} className="space-y-1">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">{item.name}</span>
-                <span className="font-medium">
-                  {item.value.toLocaleString()}
-                </span>
-              </div>
-              <div className="w-full bg-gray-100 rounded-full h-4 overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-500"
-                  style={{
-                    width: `${(item.value / maxValue) * 100}%`,
-                    backgroundColor: colors[index % colors.length],
-                  }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
+      <CardContent className="flex-1 pt-2">
+        <ResponsiveContainer width="100%" height="100%" minHeight={200}>
+          <BarChart data={chartData}>
+            {showGrid && <CartesianGrid strokeDasharray="3 3" />}
+            <XAxis
+              dataKey={xField || "name"}
+              angle={-45}
+              textAnchor="end"
+              height={80}
+              style={{ fontSize: "12px" }}
+            />
+            <YAxis style={{ fontSize: "12px" }} />
+            <Tooltip />
+            {showLegend && <Legend />}
+            <Bar dataKey={yField || "value"} fill={color} />
+          </BarChart>
+        </ResponsiveContainer>
       </CardContent>
     </Card>
   );
