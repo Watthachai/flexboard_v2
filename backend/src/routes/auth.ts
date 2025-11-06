@@ -174,6 +174,65 @@ authRouter.get("/me", authenticateUser, async (req, res) => {
   }
 });
 
+// ===== GET /api/auth/profile =====
+// Get user profile (simplified version for onprem frontend)
+authRouter.get("/profile", authenticateUser, async (req, res) => {
+  try {
+    const user = (req as any).user;
+
+    // Get fresh user data from Firebase Auth
+    const userRecord = await admin.auth().getUser(user.uid);
+
+    res.json({
+      uid: user.uid,
+      email: user.email,
+      displayName: userRecord.displayName || user.name,
+      photoURL: userRecord.photoURL,
+      tenantId: user.tenantId,
+      role: user.role,
+    });
+  } catch (error: any) {
+    console.error("Error getting profile:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ===== PUT /api/auth/profile =====
+// Update user profile
+authRouter.put("/profile", authenticateUser, async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const { displayName, photoURL } = req.body;
+
+    const updates: any = {};
+    if (displayName !== undefined) updates.displayName = displayName;
+    if (photoURL !== undefined) updates.photoURL = photoURL;
+
+    // Update Firebase Auth
+    await admin.auth().updateUser(user.uid, updates);
+
+    // Update Firestore if user has tenant
+    if (user.tenantId) {
+      await db.doc(`tenants/${user.tenantId}/users/${user.uid}`).set(
+        {
+          displayName: displayName || user.name,
+          photoURL,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+
+    res.json({
+      success: true,
+      message: "Profile updated successfully",
+    });
+  } catch (error: any) {
+    console.error("Error updating profile:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ===== POST /api/auth/remove-user =====
 // ลบ user ออกจาก tenant และ clear custom claims
 authRouter.post("/remove-user", authenticateUser, async (req, res) => {

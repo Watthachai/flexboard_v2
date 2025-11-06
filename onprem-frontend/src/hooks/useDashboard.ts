@@ -3,7 +3,7 @@ import {
   getDashboards,
   getActiveDashboardVersion,
   getDataSource,
-} from "@/lib/api";
+} from "@/lib/api-client";
 
 export interface DashboardHookResult {
   dashboards: any[];
@@ -53,7 +53,7 @@ export function useDashboard(tenantId?: string): DashboardHookResult {
             active.id
           );
           setActiveVersion(versionData);
-        } catch (err) {
+        } catch {
           console.warn("No active version found for dashboard:", active.id);
           setActiveVersion(null);
         }

@@ -3,11 +3,10 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Menu, Building2, Home, Settings, User, LogOut } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
+import { logout as apiLogout } from "@/lib/api-client";
 
 interface DashboardConfig {
   tenantId: string;
@@ -17,7 +16,6 @@ interface DashboardConfig {
 function SidebarContent({ onClose }: { onClose?: () => void }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { logout, user } = useAuth();
   const [config, setConfig] = useState<DashboardConfig | null>(null);
 
   // Load config from localStorage
@@ -45,7 +43,7 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
 
   const handleLogout = async () => {
     try {
-      await logout();
+      apiLogout();
       router.push("/");
     } catch (error) {
       console.error("Logout error:", error);
@@ -97,34 +95,7 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
         </div>
       </div>
 
-      {/* User Info */}
-      <div className="border-b border-gray-200 p-4">
-        <div className="flex items-center gap-3">
-          {user?.photoURL ? (
-            <Image
-              src={user.photoURL}
-              alt={user.displayName || "User"}
-              width={40}
-              height={40}
-              className="rounded-full ring-2 ring-gray-200"
-            />
-          ) : (
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 ring-2 ring-gray-200">
-              <span className="text-sm font-semibold text-white">
-                {(user?.displayName || user?.email || "U")
-                  .charAt(0)
-                  .toUpperCase()}
-              </span>
-            </div>
-          )}
-          <div className="flex min-w-0 flex-1 flex-col">
-            <p className="truncate text-sm font-medium text-gray-900">
-              {user?.displayName || user?.email || "User"}
-            </p>
-            <p className="truncate text-xs text-gray-500">{user?.email}</p>
-          </div>
-        </div>
-      </div>
+      {/* User Info - Removed (OnPrem doesn't have Firebase user) */}
 
       {/* Navigation */}
       <nav className="flex-1 space-y-2 p-4">

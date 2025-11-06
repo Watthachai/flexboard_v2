@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 // Routes that don't require authentication
-const publicRoutes = ["/"];
+const publicRoutes = ["/", "/login"];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -11,11 +11,12 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // For protected routes, check if tenant ID exists
+  // For protected routes, check if API key and tenant ID exist in cookies
+  const apiKey = request.cookies.get("apiKey")?.value;
   const tenantId = request.cookies.get("tenantId")?.value;
 
-  if (!tenantId && !publicRoutes.includes(pathname)) {
-    return NextResponse.redirect(new URL("/", request.url));
+  if ((!apiKey || !tenantId) && !publicRoutes.includes(pathname)) {
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
   return NextResponse.next();

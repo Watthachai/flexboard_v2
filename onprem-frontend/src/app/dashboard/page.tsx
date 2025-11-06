@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,10 +14,11 @@ import {
 } from "lucide-react";
 import { useDashboard } from "@/hooks/useDashboard";
 import Link from "next/link";
+import WidgetRenderer from "@/components/widgets/WidgetRenderer";
 
 export default function DashboardPage() {
   // Load tenantId from localStorage on mount
-  const [tenantId, setTenantId] = useState<string | null>(() => {
+  const [tenantId] = useState<string | null>(() => {
     if (typeof window !== "undefined") {
       return localStorage.getItem("tenantId");
     }
@@ -32,6 +33,13 @@ export default function DashboardPage() {
     error,
     refetch,
   } = useDashboard(tenantId || undefined);
+
+  // Parse config if it's a string
+  const config = activeVersion?.config
+    ? typeof activeVersion.config === "string"
+      ? JSON.parse(activeVersion.config)
+      : activeVersion.config
+    : null;
 
   if (loading) {
     return (
@@ -123,53 +131,33 @@ export default function DashboardPage() {
       </div>
 
       {/* Dashboard Content */}
-      {activeVersion?.config?.widgets &&
-      activeVersion.config.widgets.length > 0 ? (
+      {config?.widgets && config.widgets.length > 0 ? (
         <div className="space-y-6">
           {/* Widgets Grid */}
           <div
             className="grid gap-4"
             style={{
               gridTemplateColumns: `repeat(${
-                activeVersion.config.gridCols || 12
+                config.gridCols || 12
               }, minmax(0, 1fr))`,
             }}
           >
-            {activeVersion.config.widgets
+            {config.widgets
               .filter((widget: any) => widget.visible !== false)
               .map((widget: any) => (
-                <Card
+                <div
                   key={widget.id}
                   style={{
                     gridColumn: `span ${widget.position.w} / span ${widget.position.w}`,
                     gridRow: `span ${widget.position.h} / span ${widget.position.h}`,
                   }}
                 >
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-lg">
-                      <LayoutDashboard className="h-4 w-4" />
-                      {widget.title}
-                    </CardTitle>
-                    {widget.description && (
-                      <p className="text-sm text-muted-foreground">
-                        {widget.description}
-                      </p>
-                    )}
-                  </CardHeader>
-                  <CardContent>
-                    {/* TODO: Render actual widget based on type */}
-                    <div className="flex h-48 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                      <div className="text-center">
-                        <p className="font-semibold">
-                          {widget.type.toUpperCase()}
-                        </p>
-                        <p className="text-xs mt-1">
-                          {widget.dataConfig?.table || "No data source"}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                  <WidgetRenderer
+                    widget={widget}
+                    tenantId={tenantId || ""}
+                    dataSourceId={dataSource?.id || ""}
+                  />
+                </div>
               ))}
           </div>
         </div>

@@ -78,6 +78,8 @@ import { dashboardsRouter } from "./routes/dashboards";
 import { dataSourcesRouter } from "./routes/datasources";
 import columnsRouter from "./routes/columns";
 import adminUIRouter from "./routes/adminUIReact"; // ใช้ React version
+import { onpremRouter } from "./routes/onprem"; // OnPrem API routes
+import { apiKeysRouter } from "./routes/apiKeys"; // API Keys management
 
 // ===== Express App =====
 const app = express();
@@ -139,9 +141,11 @@ app.get("/health", (req: Request, res: Response) => {
 
 // ===== API Routes =====
 app.use("/api/auth", authRouter);
+app.use("/api/onprem", onpremRouter); // OnPrem API routes
 app.use("/api/tenants", tenantsRouter); // Fixed: Use tenantsRouter instead of configRouter
 app.use("/api/tenants", dashboardsRouter); // Dashboard routes
 app.use("/api/tenants", dataSourcesRouter); // Data source routes
+app.use("/api/tenants/:tenantId/api-keys", apiKeysRouter); // API Keys management
 app.use("/api", columnsRouter); // Columns routes
 
 // Invite Codes Route

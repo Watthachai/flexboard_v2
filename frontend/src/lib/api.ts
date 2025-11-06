@@ -561,3 +561,75 @@ export async function executeDataSourceQuery(
     body: JSON.stringify({ query, limit }),
   });
 }
+
+// ============================================
+// API Keys Management
+// ============================================
+
+export interface ApiKey {
+  id: string;
+  tenantId: string;
+  description: string;
+  isActive: boolean;
+  createdAt: string;
+  createdBy: string;
+  expiresAt: string | null;
+}
+
+export interface CreateApiKeyRequest {
+  description: string;
+  expiresInDays?: number;
+}
+
+export interface CreateApiKeyResponse {
+  apiKey: string;
+  tenantId: string;
+  expiresAt: string | null;
+  description: string;
+}
+
+/**
+ * Get all API keys for a tenant
+ */
+export async function getApiKeys(tenantId: string): Promise<ApiKey[]> {
+  return fetcher(`/api/tenants/${tenantId}/api-keys`);
+}
+
+/**
+ * Create a new API key for a tenant
+ */
+export async function createApiKey(
+  tenantId: string,
+  data: CreateApiKeyRequest
+): Promise<CreateApiKeyResponse> {
+  return fetcher(`/api/tenants/${tenantId}/api-keys`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Toggle API key active status
+ */
+export async function toggleApiKey(
+  tenantId: string,
+  keyId: string,
+  isActive: boolean
+): Promise<{ success: boolean }> {
+  return fetcher(`/api/tenants/${tenantId}/api-keys/${keyId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ isActive }),
+  });
+}
+
+/**
+ * Delete an API key
+ */
+export async function deleteApiKey(
+  tenantId: string,
+  keyId: string
+): Promise<{ success: boolean }> {
+  return fetcher(`/api/tenants/${tenantId}/api-keys/${keyId}`, {
+    method: "DELETE",
+  });
+}

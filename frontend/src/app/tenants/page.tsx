@@ -22,7 +22,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Edit2, Trash2, Loader2 } from "lucide-react";
+import { Plus, Edit2, Trash2, Loader2, Key } from "lucide-react";
 import { toast } from "sonner";
 
 interface Tenant {
@@ -274,6 +274,18 @@ export default function TenantsPage() {
               </CardContent>
               <CardContent className="pt-0 border-t">
                 <div className="flex items-center justify-end gap-2 pt-3">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      router.push(`/tenants/${tenant.id}/api-keys`);
+                    }}
+                    disabled={loading}
+                  >
+                    <Key className="h-4 w-4 mr-1" />
+                    API Keys
+                  </Button>
                   <Button
                     size="sm"
                     variant="ghost"

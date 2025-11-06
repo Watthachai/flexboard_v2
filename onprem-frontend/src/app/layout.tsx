@@ -2,8 +2,7 @@
 
 import { Geist, Geist_Mono } from "next/font/google";
 import { usePathname } from "next/navigation";
-import { useMemo } from "react";
-import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { useState, useEffect } from "react";
 import { AppSidebar } from "@/components/app-sidebar";
 import "./globals.css";
 
@@ -18,25 +17,26 @@ const geistMono = Geist_Mono({
 });
 
 function LayoutContent({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
   const pathname = usePathname();
+  const [showSidebar, setShowSidebar] = useState(false);
 
-  // Check if user has tenant (memoized to avoid unnecessary re-renders)
-  const hasTenant = useMemo(() => {
-    if (typeof window === "undefined") return false;
-    return !!localStorage.getItem("tenantId");
-  }, []);
+  useEffect(() => {
+    // This runs only on client side
+    const checkAuth = async () => {
+      const { isAuthenticated } = await import("@/lib/api-client");
+      const authenticated = isAuthenticated();
+      const hasTenant = !!localStorage.getItem("tenantId");
+      const onDashboard = pathname?.startsWith("/dashboard");
 
-  // Show sidebar only if:
-  // 1. User is logged in
-  // 2. User has tenant
-  // 3. Currently on dashboard route
-  const showSidebar =
-    !loading && user && hasTenant && pathname?.startsWith("/dashboard");
+      setShowSidebar(authenticated && hasTenant && onDashboard);
+    };
+
+    checkAuth();
+  }, [pathname]);
 
   if (showSidebar) {
     return (
-      <div className="flex h-screen bg-gray-50">
+      <div className="flex h-screen bg-gray-50" suppressHydrationWarning>
         {/* Sidebar */}
         <AppSidebar />
 
@@ -50,8 +50,8 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // No sidebar layout for login page or invite code page
-  return <>{children}</>;
+  // No sidebar layout for login page
+  return <div suppressHydrationWarning>{children}</div>;
 }
 
 export default function RootLayout({
@@ -64,9 +64,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >
-        <AuthProvider>
-          <LayoutContent>{children}</LayoutContent>
-        </AuthProvider>
+        <LayoutContent>{children}</LayoutContent>
       </body>
     </html>
   );
