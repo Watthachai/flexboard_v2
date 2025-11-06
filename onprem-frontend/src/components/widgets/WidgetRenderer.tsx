@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getWidgetData } from "@/lib/api-client";
+import { executeQuery } from "@/lib/api-client";
 import { Loader2 } from "lucide-react";
 
 // Import chart components
@@ -31,6 +31,19 @@ export default function WidgetRenderer({
 
   useEffect(() => {
     async function fetchData() {
+      console.log("WidgetRenderer Debug:", {
+        widgetId: widget.id,
+        widgetTitle: widget.title,
+        hasDataSourceId: !!dataSourceId,
+        dataSourceId,
+        hasDataConfig: !!widget.dataConfig,
+        dataConfig: widget.dataConfig,
+        hasQuery: !!widget.dataConfig?.query,
+        query: widget.dataConfig?.query,
+        hasTable: !!widget.dataConfig?.table,
+        table: widget.dataConfig?.table,
+      });
+
       if (!dataSourceId || !widget.dataConfig) {
         setLoading(false);
         return;
@@ -40,13 +53,82 @@ export default function WidgetRenderer({
         setLoading(true);
         setError(null);
 
-        const result = await getWidgetData(
-          tenantId,
-          dataSourceId,
-          widget.dataConfig
-        );
+        // Build query from dataConfig (same as frontend)
+        let query = "";
 
-        setData(result);
+        if (widget.dataConfig.query) {
+          // Use custom query if provided
+          query = widget.dataConfig.query;
+        } else if (widget.dataConfig.table) {
+          // Build query from table and fields
+          const {
+            xField,
+            yField,
+            aggregation,
+            groupBy,
+            orderBy,
+            limit,
+            table,
+          } = widget.dataConfig;
+
+          const selectFields = [];
+
+          // Add xField (grouping field)
+          if (xField) {
+            selectFields.push(xField);
+          }
+
+          // Add yField with aggregation if specified
+          if (yField) {
+            if (aggregation && groupBy && groupBy.length > 0) {
+              // Use aggregate function when grouping
+              selectFields.push(
+                `${aggregation.toUpperCase()}(${yField}) as ${yField}`
+              );
+            } else {
+              selectFields.push(yField);
+            }
+          }
+
+          const selectClause =
+            selectFields.length > 0 ? selectFields.join(", ") : "*";
+
+          // For MSSQL, use TOP instead of LIMIT
+          const topClause = limit ? `TOP ${limit} ` : "";
+          query = `SELECT ${topClause}${selectClause} FROM ${table}`;
+
+          // Add GROUP BY if specified
+          if (groupBy && groupBy.length > 0) {
+            query += ` GROUP BY ${groupBy.join(", ")}`;
+          }
+
+          // Add ORDER BY if specified
+          if (orderBy && orderBy.length > 0) {
+            const orderClauses = orderBy.map(
+              (order: any) => `${order.field} ${order.direction || "ASC"}`
+            );
+            query += ` ORDER BY ${orderClauses.join(", ")}`;
+          }
+
+          // Note: LIMIT removed - using TOP for MSSQL compatibility
+        } else {
+          setLoading(false);
+          setError("No query or table specified in dataConfig");
+          return;
+        }
+
+        const result = await executeQuery(tenantId, dataSourceId, query);
+
+        console.log("Query Result:", {
+          widgetId: widget.id,
+          widgetTitle: widget.title,
+          query,
+          resultData: result.data || result,
+          resultColumns: result.columns,
+          dataConfig: widget.dataConfig,
+        });
+
+        setData({ data: result.data || result, columns: result.columns });
       } catch (err: any) {
         console.error("Failed to fetch widget data:", err);
         setError(err.message || "Failed to load data");

@@ -1,6 +1,14 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 
 interface DoughnutChartWidgetProps {
   widget: any;
@@ -11,53 +19,95 @@ export default function DoughnutChartWidget({
   widget,
   data,
 }: DoughnutChartWidgetProps) {
-  const { title, dataConfig, styleConfig } = widget;
-  const { xField, yField } = dataConfig || {};
+  const { title, dataConfig, styleConfig, tooltipConfig } = widget;
+  const { xField, yField, aggregation } = dataConfig || {};
 
-  // Extract chart data
+  // Extract and format chart data
   const chartData = data.data.map((row) => ({
     name: row[xField] || "Unknown",
     value: parseFloat(row[yField]) || 0,
+    ...row, // Keep original data for tooltip formatting
   }));
 
-  const total = chartData.reduce((sum, item) => sum + item.value, 0);
   const colors = styleConfig?.colors || [
     "#3b82f6",
     "#8b5cf6",
     "#ec4899",
     "#f59e0b",
     "#10b981",
+    "#06b6d4",
+    "#84cc16",
   ];
+  const showLegend = styleConfig?.showLegend !== false;
+
+  // Custom tooltip content
+  const renderTooltip = (props: any) => {
+    if (!props.active || !props.payload || !props.payload.length) return null;
+
+    const data = props.payload[0].payload;
+
+    if (tooltipConfig?.enabled && tooltipConfig?.format) {
+      // Replace placeholders in format string
+      let formatted = tooltipConfig.format;
+      Object.keys(data).forEach((key) => {
+        const value = data[key];
+        formatted = formatted.replace(
+          `{${key}}`,
+          typeof value === "number" ? value.toLocaleString() : value
+        );
+      });
+
+      return (
+        <div className="bg-white p-2 border border-gray-200 rounded shadow-lg">
+          <p className="text-sm">{formatted}</p>
+        </div>
+      );
+    }
+
+    // Default tooltip
+    return (
+      <div className="bg-white p-2 border border-gray-200 rounded shadow-lg">
+        <p className="text-sm font-semibold">{data.name}</p>
+        <p className="text-sm text-blue-600">{data.value?.toLocaleString()}</p>
+      </div>
+    );
+  };
 
   return (
-    <Card className="h-full">
-      <CardHeader>
-        <CardTitle>{title || "Doughnut Chart"}</CardTitle>
+    <Card className="h-full flex flex-col">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-lg">{title || "Doughnut Chart"}</CardTitle>
+        {aggregation && (
+          <p className="text-xs text-gray-500">Aggregation: {aggregation}</p>
+        )}
       </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          <div className="text-center">
-            <div className="text-3xl font-bold">{total.toLocaleString()}</div>
-            <div className="text-sm text-gray-400">Total</div>
-          </div>
-          <div className="space-y-2">
-            {chartData.map((item, index) => {
-              const percentage = ((item.value / total) * 100).toFixed(1);
-              return (
-                <div key={index} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="w-3 h-3 rounded-full"
-                      style={{ backgroundColor: colors[index % colors.length] }}
-                    />
-                    <span className="text-sm text-gray-600">{item.name}</span>
-                  </div>
-                  <span className="text-sm font-medium">{percentage}%</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+      <CardContent className="flex-1 pt-2">
+        <ResponsiveContainer width="100%" height="100%" minHeight={200}>
+          <PieChart>
+            <Pie
+              data={chartData}
+              cx="50%"
+              cy="50%"
+              labelLine={false}
+              label={({ name, percent }: any) =>
+                `${name}: ${(percent * 100).toFixed(0)}%`
+              }
+              outerRadius={80}
+              innerRadius={50}
+              fill="#8884d8"
+              dataKey="value"
+            >
+              {chartData.map((entry, index) => (
+                <Cell
+                  key={`cell-${index}`}
+                  fill={colors[index % colors.length]}
+                />
+              ))}
+            </Pie>
+            <Tooltip content={renderTooltip} />
+            {showLegend && <Legend />}
+          </PieChart>
+        </ResponsiveContainer>
       </CardContent>
     </Card>
   );
