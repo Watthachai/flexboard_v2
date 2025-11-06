@@ -61,27 +61,40 @@ export default function WidgetRenderer({
           query = widget.dataConfig.query;
         } else if (widget.dataConfig.table) {
           // Build query from table and fields
-          const fields = [];
-          if (widget.dataConfig.xField) fields.push(widget.dataConfig.xField);
-          if (widget.dataConfig.yField) fields.push(widget.dataConfig.yField);
+          const { xField, yField, aggregation, groupBy, orderBy, table } =
+            widget.dataConfig;
 
-          const selectClause = fields.length > 0 ? fields.join(", ") : "*";
-          query = `SELECT ${selectClause} FROM ${widget.dataConfig.table}`;
+          const selectFields = [];
+
+          // Add xField (grouping field)
+          if (xField) {
+            selectFields.push(xField);
+          }
+
+          // Add yField with aggregation if specified
+          if (yField) {
+            if (aggregation && groupBy && groupBy.length > 0) {
+              // Use aggregate function when grouping
+              selectFields.push(
+                `${aggregation.toUpperCase()}(${yField}) as ${yField}`
+              );
+            } else {
+              selectFields.push(yField);
+            }
+          }
+
+          const selectClause =
+            selectFields.length > 0 ? selectFields.join(", ") : "*";
+          query = `SELECT ${selectClause} FROM ${table}`;
 
           // Add GROUP BY if specified
-          if (
-            widget.dataConfig.groupBy &&
-            widget.dataConfig.groupBy.length > 0
-          ) {
-            query += ` GROUP BY ${widget.dataConfig.groupBy.join(", ")}`;
+          if (groupBy && groupBy.length > 0) {
+            query += ` GROUP BY ${groupBy.join(", ")}`;
           }
 
           // Add ORDER BY if specified
-          if (
-            widget.dataConfig.orderBy &&
-            widget.dataConfig.orderBy.length > 0
-          ) {
-            const orderClauses = widget.dataConfig.orderBy.map(
+          if (orderBy && orderBy.length > 0) {
+            const orderClauses = orderBy.map(
               (order: any) => `${order.field} ${order.direction || "ASC"}`
             );
             query += ` ORDER BY ${orderClauses.join(", ")}`;

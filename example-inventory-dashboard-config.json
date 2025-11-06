@@ -14,6 +14,8 @@
         "xField": "prodName",
         "yField": "totalFromBuyPrice",
         "aggregation": "sum",
+        "groupBy": ["prodName"],
+        "orderBy": [{ "field": "totalFromBuyPrice", "direction": "DESC" }],
         "limit": 10
       },
       "styleConfig": {
@@ -21,6 +23,10 @@
         "showLegend": true,
         "showGrid": true,
         "showLabels": true
+      },
+      "tooltipConfig": {
+        "enabled": true,
+        "format": "{prodName}: ฿{totalFromBuyPrice}"
       },
       "visible": true
     },
@@ -34,13 +40,18 @@
         "xField": "docDate",
         "yField": "totalFromBuyPrice",
         "aggregation": "sum",
-        "limit": 100
+        "groupBy": ["docDate"],
+        "orderBy": [{ "field": "docDate", "direction": "ASC" }]
       },
       "styleConfig": {
         "color": "#10b981",
         "showLegend": true,
         "showGrid": true,
         "showLabels": true
+      },
+      "tooltipConfig": {
+        "enabled": true,
+        "format": "{docDate}: ฿{totalFromBuyPrice}"
       },
       "visible": true
     },
@@ -54,13 +65,18 @@
         "xField": "branch",
         "yField": "totalFromBuyPrice",
         "aggregation": "sum",
-        "limit": 20
+        "groupBy": ["branch"],
+        "orderBy": [{ "field": "totalFromBuyPrice", "direction": "DESC" }]
       },
       "styleConfig": {
         "color": "#f59e0b",
         "showLegend": true,
         "showGrid": true,
         "showLabels": true
+      },
+      "tooltipConfig": {
+        "enabled": true,
+        "format": "Branch {branch}: ฿{totalFromBuyPrice}"
       },
       "visible": true
     },
@@ -74,11 +90,17 @@
         "xField": "prodGrp",
         "yField": "totalFromBuyPrice",
         "aggregation": "sum",
+        "groupBy": ["prodGrp"],
+        "orderBy": [{ "field": "totalFromBuyPrice", "direction": "DESC" }],
         "limit": 8
       },
       "styleConfig": {
         "showLegend": true,
         "showLabels": true
+      },
+      "tooltipConfig": {
+        "enabled": true,
+        "format": "{prodGrp}: ฿{totalFromBuyPrice}"
       },
       "visible": true
     },
@@ -109,13 +131,18 @@
         "xField": "docDate",
         "yField": "buyPrice",
         "aggregation": "avg",
-        "limit": 100
+        "groupBy": ["docDate"],
+        "orderBy": [{ "field": "docDate", "direction": "ASC" }]
       },
       "styleConfig": {
         "color": "#8b5cf6",
         "showLegend": true,
         "showGrid": true,
         "showLabels": true
+      },
+      "tooltipConfig": {
+        "enabled": true,
+        "format": "{docDate}: ฿{buyPrice}"
       },
       "visible": true
     },
@@ -146,6 +173,8 @@
         "xField": "ageBucket",
         "yField": "totalFromBuyPrice",
         "aggregation": "sum",
+        "groupBy": ["ageBucket"],
+        "orderBy": [{ "field": "totalFromBuyPrice", "direction": "DESC" }],
         "limit": 10
       },
       "styleConfig": {
@@ -153,6 +182,10 @@
         "showLegend": true,
         "showGrid": true,
         "showLabels": true
+      },
+      "tooltipConfig": {
+        "enabled": true,
+        "format": "Age: {ageBucket} - ฿{totalFromBuyPrice}"
       },
       "visible": true
     }

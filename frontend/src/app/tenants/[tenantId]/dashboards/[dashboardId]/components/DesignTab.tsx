@@ -13,6 +13,7 @@ import {
   Table,
   Plus,
   ChevronDown,
+  ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -938,6 +939,8 @@ export function DesignTab({
 
 // Documentation Component
 function ConfigDocumentation() {
+  const [showFullDocs, setShowFullDocs] = useState(false);
+
   return (
     <div className="space-y-4">
       {/* Dashboard Config */}
@@ -989,8 +992,8 @@ function ConfigDocumentation() {
             <code className="bg-blue-100 px-1 rounded font-semibold">type</code>
             <p className="text-gray-600 mt-1">
               &quot;bar&quot; | &quot;line&quot; | &quot;pie&quot; |
-              &quot;doughnut&quot; | &quot;area&quot; | &quot;kpi&quot; |
-              &quot;table&quot; | &quot;gauge&quot;
+              &quot;doughnut&quot; | &quot;kpi&quot; | &quot;table&quot; |
+              &quot;gauge&quot;
             </p>
           </div>
         </CardContent>
@@ -1029,26 +1032,58 @@ function ConfigDocumentation() {
         <CardContent className="text-xs space-y-2">
           <div>
             <code className="bg-purple-100 px-1 rounded">table</code>
-            <p className="text-gray-600 mt-1">Table name (string)</p>
+            <p className="text-gray-600 mt-1">
+              Table name (required if no query)
+            </p>
+          </div>
+          <div>
+            <code className="bg-purple-100 px-1 rounded">query</code>
+            <p className="text-gray-600 mt-1">
+              Custom SQL query (optional, replaces table)
+            </p>
           </div>
           <div>
             <code className="bg-purple-100 px-1 rounded">xField</code>
-            <p className="text-gray-600 mt-1">X-axis column name</p>
+            <p className="text-gray-600 mt-1">X-axis/category column name</p>
           </div>
           <div>
             <code className="bg-purple-100 px-1 rounded">yField</code>
-            <p className="text-gray-600 mt-1">Y-axis column name</p>
+            <p className="text-gray-600 mt-1">Y-axis/value column name</p>
           </div>
           <div>
             <code className="bg-purple-100 px-1 rounded">aggregation</code>
             <p className="text-gray-600 mt-1">
               &quot;sum&quot; | &quot;avg&quot; | &quot;count&quot; |
-              &quot;min&quot; | &quot;max&quot; | &quot;none&quot;
+              &quot;min&quot; | &quot;max&quot;
+            </p>
+          </div>
+          <div>
+            <code className="bg-purple-100 px-1 rounded">groupBy</code>
+            <p className="text-gray-600 mt-1">
+              Array of fields to group by: [&quot;field1&quot;,
+              &quot;field2&quot;]
+            </p>
+          </div>
+          <div>
+            <code className="bg-purple-100 px-1 rounded">orderBy</code>
+            <p className="text-gray-600 mt-1">
+              Array: [{`{ "field": "name", "direction": "ASC" }`}]
             </p>
           </div>
           <div>
             <code className="bg-purple-100 px-1 rounded">limit</code>
-            <p className="text-gray-600 mt-1">Max rows (number)</p>
+            <p className="text-gray-600 mt-1">
+              Max rows (optional, no limit if omitted)
+            </p>
+          </div>
+          <div className="pt-2 border-t border-gray-200">
+            <p className="text-gray-700 font-semibold mb-1">
+              💡 Important: Aggregation + GROUP BY
+            </p>
+            <p className="text-gray-600">
+              When using <code>groupBy</code>, you MUST specify{" "}
+              <code>aggregation</code> to avoid SQL errors.
+            </p>
           </div>
         </CardContent>
       </Card>
@@ -1061,41 +1096,130 @@ function ConfigDocumentation() {
         <CardContent className="text-xs space-y-2">
           <div>
             <code className="bg-orange-100 px-1 rounded">color</code>
-            <p className="text-gray-600 mt-1">Hex color (#3b82f6)</p>
+            <p className="text-gray-600 mt-1">
+              Single hex color (#3b82f6) for bar/line
+            </p>
+          </div>
+          <div>
+            <code className="bg-orange-100 px-1 rounded">colors</code>
+            <p className="text-gray-600 mt-1">
+              Array of colors for pie/doughnut: [&quot;#3b82f6&quot;,
+              &quot;#8b5cf6&quot;]
+            </p>
           </div>
           <div>
             <code className="bg-orange-100 px-1 rounded">showLegend</code>
-            <p className="text-gray-600 mt-1">Boolean</p>
+            <p className="text-gray-600 mt-1">Boolean (default: true)</p>
           </div>
           <div>
             <code className="bg-orange-100 px-1 rounded">showGrid</code>
-            <p className="text-gray-600 mt-1">Boolean</p>
+            <p className="text-gray-600 mt-1">Boolean (default: true)</p>
           </div>
           <div>
             <code className="bg-orange-100 px-1 rounded">showLabels</code>
-            <p className="text-gray-600 mt-1">Boolean</p>
+            <p className="text-gray-600 mt-1">Boolean (for pie/doughnut)</p>
           </div>
           <div>
             <code className="bg-orange-100 px-1 rounded">prefix</code>
-            <p className="text-gray-600 mt-1">Text before value ($, ฿)</p>
+            <p className="text-gray-600 mt-1">
+              Text before value: &quot;฿&quot;, &quot;$&quot; (for KPI)
+            </p>
           </div>
           <div>
             <code className="bg-orange-100 px-1 rounded">suffix</code>
-            <p className="text-gray-600 mt-1">Text after value (%, kg)</p>
+            <p className="text-gray-600 mt-1">
+              Text after value: &quot; units&quot;, &quot;%&quot; (for KPI)
+            </p>
           </div>
         </CardContent>
       </Card>
 
-      {/* Example */}
+      {/* Tooltip Config */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm">Example Widget</CardTitle>
+          <CardTitle className="text-sm">Tooltip Config</CardTitle>
+        </CardHeader>
+        <CardContent className="text-xs space-y-2">
+          <div>
+            <code className="bg-cyan-100 px-1 rounded">enabled</code>
+            <p className="text-gray-600 mt-1">
+              Boolean (enable custom tooltip)
+            </p>
+          </div>
+          <div>
+            <code className="bg-cyan-100 px-1 rounded">format</code>
+            <p className="text-gray-600 mt-1">
+              Format string with placeholders: {`"{fieldName}: ฿{value}"`}
+            </p>
+          </div>
+          <div className="pt-2 border-t border-gray-200">
+            <p className="text-gray-700 font-semibold mb-1">
+              ✨ Auto-formatting:
+            </p>
+            <ul className="text-gray-600 list-disc list-inside space-y-1">
+              <li>Numbers: 1234567 → 1,234,567</li>
+              <li>Dates: 2019-04-01T00:00:00.000Z → 1 เม.ย. 2019</li>
+            </ul>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* SQL Query Generation */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">🔧 SQL Query Generation</CardTitle>
+        </CardHeader>
+        <CardContent className="text-xs space-y-2">
+          <p className="text-gray-700 font-semibold mb-2">
+            When using table + aggregation + groupBy:
+          </p>
+          <pre className="bg-gray-50 p-2 rounded text-xs overflow-x-auto">
+            {`SELECT {xField}, 
+  {aggregation}({yField}) as {yField}
+FROM {table}
+GROUP BY {groupBy}
+ORDER BY {orderBy}
+LIMIT {limit}`}
+          </pre>
+          <div className="pt-2 border-t border-gray-200">
+            <p className="text-gray-700 font-semibold mb-1">Example:</p>
+            <pre className="bg-blue-50 p-2 rounded text-xs overflow-x-auto">
+              {`{
+  "table": "sales",
+  "xField": "product",
+  "yField": "revenue",
+  "aggregation": "sum",
+  "groupBy": ["product"],
+  "orderBy": [{
+    "field": "revenue",
+    "direction": "DESC"
+  }],
+  "limit": 10
+}`}
+            </pre>
+            <p className="text-gray-600 mt-2">Generates:</p>
+            <pre className="bg-green-50 p-2 rounded text-xs overflow-x-auto">
+              {`SELECT product, 
+  SUM(revenue) as revenue
+FROM sales
+GROUP BY product
+ORDER BY revenue DESC
+LIMIT 10`}
+            </pre>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Complete Example */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">📋 Complete Example</CardTitle>
         </CardHeader>
         <CardContent>
           <pre className="text-xs bg-gray-50 p-3 rounded overflow-x-auto whitespace-pre-wrap break-all">
             {`{
   "id": "widget_1",
-  "title": "Sales Chart",
+  "title": "Top 10 Products by Sales",
   "type": "bar",
   "position": {
     "x": 0,
@@ -1104,22 +1228,1041 @@ function ConfigDocumentation() {
     "h": 4
   },
   "dataConfig": {
-    "table": "sales",
-    "xField": "product",
-    "yField": "amount",
+    "table": "sales_data",
+    "xField": "productName",
+    "yField": "totalSales",
     "aggregation": "sum",
-    "limit": 100
+    "groupBy": ["productName"],
+    "orderBy": [{
+      "field": "totalSales",
+      "direction": "DESC"
+    }],
+    "limit": 10
   },
   "styleConfig": {
     "color": "#3b82f6",
-    "showLegend": true,
-    "prefix": "$"
+    "showGrid": true,
+    "showLegend": true
+  },
+  "tooltipConfig": {
+    "enabled": true,
+    "format": "{productName}: ฿{totalSales}"
   },
   "visible": true
 }`}
           </pre>
         </CardContent>
       </Card>
+
+      {/* Tips & Troubleshooting */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">💡 Tips & Troubleshooting</CardTitle>
+        </CardHeader>
+        <CardContent className="text-xs space-y-3">
+          <div>
+            <p className="text-gray-700 font-semibold">
+              ❌ Error: Column not in GROUP BY
+            </p>
+            <p className="text-gray-600 mt-1">
+              Solution: Add <code>aggregation</code> when using{" "}
+              <code>groupBy</code>
+            </p>
+          </div>
+          <div>
+            <p className="text-gray-700 font-semibold">
+              📊 Chart shows no data
+            </p>
+            <p className="text-gray-600 mt-1">
+              Check: Table name, field names, data source connection
+            </p>
+          </div>
+          <div>
+            <p className="text-gray-700 font-semibold">
+              🎨 Want different colors for pie chart?
+            </p>
+            <p className="text-gray-600 mt-1">
+              Use <code>colors</code> array instead of single <code>color</code>
+            </p>
+          </div>
+          <div>
+            <p className="text-gray-700 font-semibold">
+              🔢 Need to remove data limit?
+            </p>
+            <p className="text-gray-600 mt-1">
+              Just omit the <code>limit</code> field from{" "}
+              <code>dataConfig</code>
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Link to Full Docs */}
+      <Card
+        className="bg-blue-50 border-blue-200 cursor-pointer hover:bg-blue-100 transition-colors"
+        onClick={() => setShowFullDocs(true)}
+      >
+        <CardContent className="py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-start gap-3">
+              <BookOpen className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
+              <div className="text-xs">
+                <p className="text-blue-900 font-semibold mb-1 text-sm">
+                  📚 Full Documentation
+                </p>
+                <p className="text-blue-700">
+                  Complete reference with detailed examples, SQL generation, and
+                  best practices
+                </p>
+              </div>
+            </div>
+            <ExternalLink className="h-4 w-4 text-blue-600 shrink-0" />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Full Documentation Modal */}
+      {showFullDocs && (
+        <FullDocumentationModal onClose={() => setShowFullDocs(false)} />
+      )}
+    </div>
+  );
+}
+
+// Full Documentation Modal Component
+function FullDocumentationModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-lg shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-linear-to-r from-blue-50 to-purple-50">
+          <div className="flex items-center gap-3">
+            <BookOpen className="h-6 w-6 text-blue-600" />
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">
+                Dashboard Configuration Reference
+              </h2>
+              <p className="text-sm text-gray-600">
+                Complete guide with examples and best practices
+              </p>
+            </div>
+          </div>
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            ✕
+          </Button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="prose prose-sm max-w-none space-y-8">
+            {/* Table of Contents */}
+            <Card className="bg-gray-50">
+              <CardHeader>
+                <CardTitle className="text-base">
+                  📋 Table of Contents
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm space-y-1">
+                <div className="grid grid-cols-2 gap-2">
+                  <a
+                    href="#dashboard-config"
+                    className="text-blue-600 hover:underline"
+                  >
+                    → Dashboard Configuration
+                  </a>
+                  <a
+                    href="#widget-config"
+                    className="text-blue-600 hover:underline"
+                  >
+                    → Widget Configuration
+                  </a>
+                  <a
+                    href="#data-config"
+                    className="text-blue-600 hover:underline"
+                  >
+                    → Data Configuration
+                  </a>
+                  <a
+                    href="#style-config"
+                    className="text-blue-600 hover:underline"
+                  >
+                    → Style Configuration
+                  </a>
+                  <a
+                    href="#tooltip-config"
+                    className="text-blue-600 hover:underline"
+                  >
+                    → Tooltip Configuration
+                  </a>
+                  <a
+                    href="#sql-generation"
+                    className="text-blue-600 hover:underline"
+                  >
+                    → SQL Query Generation
+                  </a>
+                  <a
+                    href="#widget-types"
+                    className="text-blue-600 hover:underline"
+                  >
+                    → Widget Types
+                  </a>
+                  <a href="#examples" className="text-blue-600 hover:underline">
+                    → Complete Examples
+                  </a>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Dashboard Configuration */}
+            <div id="dashboard-config">
+              <h3 className="text-lg font-bold text-gray-900 mb-3 border-b pb-2">
+                📊 Dashboard Configuration
+              </h3>
+              <p className="text-gray-600 mb-4">
+                Top-level dashboard configuration object.
+              </p>
+              <Card>
+                <CardContent className="p-4">
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <code className="bg-blue-100 px-2 py-1 rounded text-sm font-semibold">
+                          layout
+                        </code>
+                        <Badge variant="outline" className="text-xs">
+                          Required
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 ml-2">
+                        Layout mode: <code>&quot;grid&quot;</code>,{" "}
+                        <code>&quot;single-page&quot;</code>, or{" "}
+                        <code>&quot;custom&quot;</code>
+                      </p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <code className="bg-blue-100 px-2 py-1 rounded text-sm font-semibold">
+                          theme
+                        </code>
+                        <Badge variant="secondary" className="text-xs">
+                          Optional
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 ml-2">
+                        Color theme: <code>&quot;light&quot;</code>,{" "}
+                        <code>&quot;dark&quot;</code>, or{" "}
+                        <code>&quot;auto&quot;</code> (default:{" "}
+                        <code>&quot;light&quot;</code>)
+                      </p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <code className="bg-blue-100 px-2 py-1 rounded text-sm font-semibold">
+                          gridCols
+                        </code>
+                        <Badge variant="secondary" className="text-xs">
+                          Optional
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 ml-2">
+                        Number of grid columns (1-24, default: <code>12</code>)
+                      </p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <code className="bg-blue-100 px-2 py-1 rounded text-sm font-semibold">
+                          gridRowHeight
+                        </code>
+                        <Badge variant="secondary" className="text-xs">
+                          Optional
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 ml-2">
+                        Height of each grid row in pixels (default:{" "}
+                        <code>100</code>)
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Widget Configuration */}
+            <div id="widget-config">
+              <h3 className="text-lg font-bold text-gray-900 mb-3 border-b pb-2">
+                🎨 Widget Configuration
+              </h3>
+              <p className="text-gray-600 mb-4">
+                Configuration for individual widgets on the dashboard.
+              </p>
+              <Card>
+                <CardContent className="p-4">
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <code className="bg-purple-100 px-2 py-1 rounded text-sm font-semibold">
+                          id
+                        </code>
+                        <Badge variant="outline" className="text-xs">
+                          Required
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 ml-2">
+                        Unique identifier for the widget (string)
+                      </p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <code className="bg-purple-100 px-2 py-1 rounded text-sm font-semibold">
+                          title
+                        </code>
+                        <Badge variant="outline" className="text-xs">
+                          Required
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 ml-2">
+                        Display title for the widget
+                      </p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <code className="bg-purple-100 px-2 py-1 rounded text-sm font-semibold">
+                          type
+                        </code>
+                        <Badge variant="outline" className="text-xs">
+                          Required
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 ml-2">
+                        Widget type: <code>&quot;bar&quot;</code>,{" "}
+                        <code>&quot;line&quot;</code>,{" "}
+                        <code>&quot;pie&quot;</code>,{" "}
+                        <code>&quot;doughnut&quot;</code>,{" "}
+                        <code>&quot;kpi&quot;</code>,{" "}
+                        <code>&quot;table&quot;</code>,{" "}
+                        <code>&quot;gauge&quot;</code>
+                      </p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <code className="bg-purple-100 px-2 py-1 rounded text-sm font-semibold">
+                          position
+                        </code>
+                        <Badge variant="outline" className="text-xs">
+                          Required
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 ml-2">
+                        Widget position:{" "}
+                        <code>{`{ x: 0, y: 0, w: 6, h: 4 }`}</code>
+                      </p>
+                      <div className="ml-4 mt-2 text-xs text-gray-600 space-y-1">
+                        <div>
+                          • <code>x</code>: Column position (0-based)
+                        </div>
+                        <div>
+                          • <code>y</code>: Row position (0-based)
+                        </div>
+                        <div>
+                          • <code>w</code>: Width in grid columns
+                        </div>
+                        <div>
+                          • <code>h</code>: Height in grid rows
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Data Configuration */}
+            <div id="data-config">
+              <h3 className="text-lg font-bold text-gray-900 mb-3 border-b pb-2">
+                💾 Data Configuration
+              </h3>
+              <p className="text-gray-600 mb-4">
+                Defines how data is fetched and processed for the widget.
+              </p>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+                <div className="flex items-start gap-2">
+                  <span className="text-lg">⚠️</span>
+                  <div className="text-sm">
+                    <p className="font-semibold text-amber-900 mb-1">
+                      Important: Aggregation + GROUP BY
+                    </p>
+                    <p className="text-amber-800">
+                      When using{" "}
+                      <code className="bg-amber-100 px-1 rounded">groupBy</code>
+                      , you MUST specify{" "}
+                      <code className="bg-amber-100 px-1 rounded">
+                        aggregation
+                      </code>{" "}
+                      to avoid SQL errors.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <Card>
+                <CardContent className="p-4">
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <code className="bg-green-100 px-2 py-1 rounded text-sm font-semibold">
+                          table
+                        </code>
+                        <Badge variant="outline" className="text-xs">
+                          Required*
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 ml-2">
+                        Database table or view name
+                      </p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <code className="bg-green-100 px-2 py-1 rounded text-sm font-semibold">
+                          query
+                        </code>
+                        <Badge variant="outline" className="text-xs">
+                          Required*
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 ml-2">
+                        Custom SQL query (alternative to table)
+                      </p>
+                      <p className="text-xs text-gray-500 ml-2 mt-1">
+                        *Either <code>table</code> or <code>query</code> is
+                        required
+                      </p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <code className="bg-green-100 px-2 py-1 rounded text-sm font-semibold">
+                          xField
+                        </code>
+                        <Badge variant="secondary" className="text-xs">
+                          Optional
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 ml-2">
+                        Field for X-axis (categories)
+                      </p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <code className="bg-green-100 px-2 py-1 rounded text-sm font-semibold">
+                          yField
+                        </code>
+                        <Badge variant="secondary" className="text-xs">
+                          Optional
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 ml-2">
+                        Field for Y-axis (values)
+                      </p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <code className="bg-green-100 px-2 py-1 rounded text-sm font-semibold">
+                          aggregation
+                        </code>
+                        <Badge variant="secondary" className="text-xs">
+                          Optional
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 ml-2">
+                        Aggregation function: <code>&quot;sum&quot;</code>,{" "}
+                        <code>&quot;avg&quot;</code>,{" "}
+                        <code>&quot;count&quot;</code>,{" "}
+                        <code>&quot;min&quot;</code>,{" "}
+                        <code>&quot;max&quot;</code>
+                      </p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <code className="bg-green-100 px-2 py-1 rounded text-sm font-semibold">
+                          groupBy
+                        </code>
+                        <Badge variant="secondary" className="text-xs">
+                          Optional
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 ml-2">
+                        Array of fields to group by:{" "}
+                        <code>{`["field1", "field2"]`}</code>
+                      </p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <code className="bg-green-100 px-2 py-1 rounded text-sm font-semibold">
+                          orderBy
+                        </code>
+                        <Badge variant="secondary" className="text-xs">
+                          Optional
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 ml-2">
+                        Sorting configuration:{" "}
+                        <code>{`[{ "field": "name", "direction": "ASC" }]`}</code>
+                      </p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <code className="bg-green-100 px-2 py-1 rounded text-sm font-semibold">
+                          limit
+                        </code>
+                        <Badge variant="secondary" className="text-xs">
+                          Optional
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 ml-2">
+                        Maximum number of records (omit for no limit)
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* SQL Generation */}
+            <div id="sql-generation">
+              <h3 className="text-lg font-bold text-gray-900 mb-3 border-b pb-2">
+                🔧 SQL Query Generation
+              </h3>
+              <p className="text-gray-600 mb-4">
+                When using <code>table</code> + <code>aggregation</code> +{" "}
+                <code>groupBy</code>, the system automatically generates SQL:
+              </p>
+
+              <Card className="bg-gray-50">
+                <CardHeader>
+                  <CardTitle className="text-sm">SQL Template</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <pre className="text-xs bg-white p-3 rounded border overflow-x-auto">
+                    {`SELECT {xField}, {aggregation}({yField}) as {yField}
+FROM {table}
+GROUP BY {groupBy}
+ORDER BY {orderBy}
+LIMIT {limit}`}
+                  </pre>
+                </CardContent>
+              </Card>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <Card className="bg-blue-50 border-blue-200">
+                  <CardHeader>
+                    <CardTitle className="text-sm">📝 Configuration</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <pre className="text-xs bg-white p-3 rounded overflow-x-auto">
+                      {`{
+  "table": "sales_data",
+  "xField": "productName",
+  "yField": "totalSales",
+  "aggregation": "sum",
+  "groupBy": ["productName"],
+  "orderBy": [{
+    "field": "totalSales",
+    "direction": "DESC"
+  }],
+  "limit": 10
+}`}
+                    </pre>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-green-50 border-green-200">
+                  <CardHeader>
+                    <CardTitle className="text-sm">✅ Generated SQL</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <pre className="text-xs bg-white p-3 rounded overflow-x-auto">
+                      {`SELECT 
+  productName,
+  SUM(totalSales) as totalSales
+FROM sales_data
+GROUP BY productName
+ORDER BY totalSales DESC
+LIMIT 10`}
+                    </pre>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+
+            {/* Style Configuration */}
+            <div id="style-config">
+              <h3 className="text-lg font-bold text-gray-900 mb-3 border-b pb-2">
+                🎨 Style Configuration
+              </h3>
+              <p className="text-gray-600 mb-4">
+                Visual styling options for widgets.
+              </p>
+              <Card>
+                <CardContent className="p-4">
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <code className="bg-orange-100 px-2 py-1 rounded text-sm font-semibold">
+                          color
+                        </code>
+                        <Badge className="text-xs bg-blue-500">Bar/Line</Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 ml-2">
+                        Single hex color: <code>&quot;#3b82f6&quot;</code>
+                      </p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <code className="bg-orange-100 px-2 py-1 rounded text-sm font-semibold">
+                          colors
+                        </code>
+                        <Badge className="text-xs bg-pink-500">
+                          Pie/Doughnut
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 ml-2">
+                        Array of hex colors:{" "}
+                        <code>{`["#3b82f6", "#8b5cf6", "#ec4899"]`}</code>
+                      </p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <code className="bg-orange-100 px-2 py-1 rounded text-sm font-semibold">
+                          showGrid
+                        </code>
+                        <Badge variant="secondary" className="text-xs">
+                          Boolean
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 ml-2">
+                        Show grid lines (default: <code>true</code>)
+                      </p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <code className="bg-orange-100 px-2 py-1 rounded text-sm font-semibold">
+                          showLegend
+                        </code>
+                        <Badge variant="secondary" className="text-xs">
+                          Boolean
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 ml-2">
+                        Show legend (default: <code>true</code>)
+                      </p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <code className="bg-orange-100 px-2 py-1 rounded text-sm font-semibold">
+                          prefix
+                        </code>
+                        <Badge className="text-xs bg-amber-500">KPI</Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 ml-2">
+                        Text before value: <code>&quot;฿&quot;</code>,{" "}
+                        <code>&quot;$&quot;</code>
+                      </p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <code className="bg-orange-100 px-2 py-1 rounded text-sm font-semibold">
+                          suffix
+                        </code>
+                        <Badge className="text-xs bg-amber-500">KPI</Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 ml-2">
+                        Text after value: <code>&quot; units&quot;</code>,{" "}
+                        <code>&quot;%&quot;</code>
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Tooltip Configuration */}
+            <div id="tooltip-config">
+              <h3 className="text-lg font-bold text-gray-900 mb-3 border-b pb-2">
+                💬 Tooltip Configuration
+              </h3>
+              <p className="text-gray-600 mb-4">
+                Customize tooltip display when hovering over chart elements.
+              </p>
+
+              <Card>
+                <CardContent className="p-4">
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <code className="bg-cyan-100 px-2 py-1 rounded text-sm font-semibold">
+                          enabled
+                        </code>
+                        <Badge variant="outline" className="text-xs">
+                          Required
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 ml-2">
+                        Enable custom tooltip (boolean)
+                      </p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <code className="bg-cyan-100 px-2 py-1 rounded text-sm font-semibold">
+                          format
+                        </code>
+                        <Badge variant="outline" className="text-xs">
+                          Required
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 ml-2">
+                        Format string with placeholders:{" "}
+                        <code>{`"{fieldName}: ฿{value}"`}</code>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                    <p className="text-sm font-semibold text-blue-900 mb-2">
+                      ✨ Auto-formatting Features:
+                    </p>
+                    <ul className="text-sm text-blue-800 space-y-1">
+                      <li>
+                        • <strong>Numbers:</strong> 1234567 → 1,234,567
+                      </li>
+                      <li>
+                        • <strong>Dates:</strong> 2019-04-01T00:00:00.000Z → 1
+                        เม.ย. 2019
+                      </li>
+                      <li>
+                        • <strong>Null values:</strong> Handled gracefully
+                      </li>
+                    </ul>
+                  </div>
+
+                  <div className="mt-4">
+                    <p className="text-sm font-semibold text-gray-700 mb-2">
+                      Example:
+                    </p>
+                    <pre className="text-xs bg-gray-50 p-3 rounded border">
+                      {`"tooltipConfig": {
+  "enabled": true,
+  "format": "Product: {productName} | Sales: ฿{totalSales}"
+}`}
+                    </pre>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Widget Types */}
+            <div id="widget-types">
+              <h3 className="text-lg font-bold text-gray-900 mb-3 border-b pb-2">
+                📊 Widget Types
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <span>📊</span> Bar Chart
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-xs space-y-2">
+                    <p className="text-gray-600">
+                      <strong>Best for:</strong> Comparing categories, rankings
+                    </p>
+                    <p className="text-gray-600">
+                      <strong>Required:</strong> xField, yField
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <span>📈</span> Line Chart
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-xs space-y-2">
+                    <p className="text-gray-600">
+                      <strong>Best for:</strong> Trends over time
+                    </p>
+                    <p className="text-gray-600">
+                      <strong>Required:</strong> xField, yField
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <span>🥧</span> Pie/Doughnut Chart
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-xs space-y-2">
+                    <p className="text-gray-600">
+                      <strong>Best for:</strong> Part-to-whole relationships
+                    </p>
+                    <p className="text-gray-600">
+                      <strong>Required:</strong> xField, yField
+                    </p>
+                    <p className="text-gray-600">
+                      <strong>Tip:</strong> Limit to 5-8 slices
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <span>🎯</span> KPI Widget
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-xs space-y-2">
+                    <p className="text-gray-600">
+                      <strong>Best for:</strong> Single key metrics
+                    </p>
+                    <p className="text-gray-600">
+                      <strong>Required:</strong> yField
+                    </p>
+                    <p className="text-gray-600">
+                      <strong>Features:</strong> Trend indicators, prefix/suffix
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <span>📋</span> Table Widget
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-xs space-y-2">
+                    <p className="text-gray-600">
+                      <strong>Best for:</strong> Detailed data, multiple columns
+                    </p>
+                    <p className="text-gray-600">
+                      <strong>Required:</strong> table or query
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <span>🎚️</span> Gauge Widget
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-xs space-y-2">
+                    <p className="text-gray-600">
+                      <strong>Best for:</strong> Progress, capacity metrics
+                    </p>
+                    <p className="text-gray-600">
+                      <strong>Required:</strong> yField, min, max
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+
+            {/* Complete Example */}
+            <div id="examples">
+              <h3 className="text-lg font-bold text-gray-900 mb-3 border-b pb-2">
+                📋 Complete Example
+              </h3>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">
+                    Full Dashboard Configuration
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <pre className="text-xs bg-gray-50 p-4 rounded border overflow-x-auto whitespace-pre">
+                    {`{
+  "layout": "grid",
+  "theme": "light",
+  "gridCols": 12,
+  "gridRowHeight": 100,
+  "widgets": [
+    {
+      "id": "widget_1",
+      "title": "Top 10 Products by Sales",
+      "type": "bar",
+      "position": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "dataConfig": {
+        "table": "sales_data",
+        "xField": "productName",
+        "yField": "totalSales",
+        "aggregation": "sum",
+        "groupBy": ["productName"],
+        "orderBy": [{ "field": "totalSales", "direction": "DESC" }],
+        "limit": 10
+      },
+      "styleConfig": {
+        "color": "#3b82f6",
+        "showGrid": true,
+        "showLegend": true
+      },
+      "tooltipConfig": {
+        "enabled": true,
+        "format": "{productName}: ฿{totalSales}"
+      },
+      "visible": true
+    },
+    {
+      "id": "widget_2",
+      "title": "Total Revenue",
+      "type": "kpi",
+      "position": { "x": 6, "y": 0, "w": 3, "h": 2 },
+      "dataConfig": {
+        "table": "sales_data",
+        "yField": "totalSales",
+        "aggregation": "sum"
+      },
+      "styleConfig": {
+        "prefix": "฿",
+        "suffix": "",
+        "color": "#10b981"
+      },
+      "visible": true
+    }
+  ],
+  "autoRefresh": false,
+  "refreshInterval": 0
+}`}
+                  </pre>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Best Practices */}
+            <div>
+              <h3 className="text-lg font-bold text-gray-900 mb-3 border-b pb-2">
+                💡 Best Practices
+              </h3>
+              <div className="space-y-3">
+                <Card className="bg-green-50 border-green-200">
+                  <CardContent className="p-4">
+                    <p className="text-sm font-semibold text-green-900 mb-1">
+                      ✅ DO: Use aggregation with GROUP BY
+                    </p>
+                    <p className="text-sm text-green-800">
+                      Always specify <code>aggregation</code> when using{" "}
+                      <code>groupBy</code>
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-blue-50 border-blue-200">
+                  <CardContent className="p-4">
+                    <p className="text-sm font-semibold text-blue-900 mb-1">
+                      ✅ DO: Limit data for performance
+                    </p>
+                    <p className="text-sm text-blue-800">
+                      Use <code>limit</code> to prevent loading too much data at
+                      once
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-purple-50 border-purple-200">
+                  <CardContent className="p-4">
+                    <p className="text-sm font-semibold text-purple-900 mb-1">
+                      ✅ DO: Order data appropriately
+                    </p>
+                    <p className="text-sm text-purple-800">
+                      Time series: ASC, Rankings: DESC
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-red-50 border-red-200">
+                  <CardContent className="p-4">
+                    <p className="text-sm font-semibold text-red-900 mb-1">
+                      ❌ DON&apos;T: Use too many pie slices
+                    </p>
+                    <p className="text-sm text-red-800">
+                      Limit pie/doughnut charts to 5-8 slices for readability
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+
+            {/* Troubleshooting */}
+            <div>
+              <h3 className="text-lg font-bold text-gray-900 mb-3 border-b pb-2">
+                🔧 Troubleshooting
+              </h3>
+              <div className="space-y-3">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm text-red-600">
+                      ❌ Error: Column not in GROUP BY clause
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-sm space-y-2">
+                    <p className="text-gray-700">
+                      <strong>Problem:</strong> Using fields without aggregation
+                      when GROUP BY is present
+                    </p>
+                    <div className="bg-red-50 p-3 rounded border border-red-200">
+                      <p className="font-semibold mb-1">Solution:</p>
+                      <pre className="text-xs">
+                        {`"dataConfig": {
+  "yField": "sales",
+  "aggregation": "sum",  ← Add this
+  "groupBy": ["category"]
+}`}
+                      </pre>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm text-amber-600">
+                      ⚠️ No data available
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-sm space-y-2">
+                    <p className="text-gray-700">
+                      <strong>Check:</strong>
+                    </p>
+                    <ul className="list-disc list-inside text-gray-600 space-y-1">
+                      <li>Table/field names are correct</li>
+                      <li>Data exists in database</li>
+                      <li>Data source connection is active</li>
+                      <li>Query syntax is valid</li>
+                    </ul>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
+          <p className="text-sm text-gray-600">
+            💡 For more details, see:{" "}
+            <code className="bg-gray-200 px-2 py-1 rounded text-xs">
+              Docs/DASHBOARD_CONFIG_REFERENCE.md
+            </code>
+          </p>
+          <Button onClick={onClose}>Close</Button>
+        </div>
+      </div>
     </div>
   );
 }

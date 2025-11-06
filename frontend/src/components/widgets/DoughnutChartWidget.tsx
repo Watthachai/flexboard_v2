@@ -19,13 +19,14 @@ export default function DoughnutChartWidget({
   widget,
   data,
 }: DoughnutChartWidgetProps) {
-  const { title, dataConfig, styleConfig } = widget;
+  const { title, dataConfig, styleConfig, tooltipConfig } = widget;
   const { xField, yField, aggregation } = dataConfig || {};
 
   // Extract and format chart data
   const chartData = data.data.map((row) => ({
     name: row[xField] || "Unknown",
     value: parseFloat(row[yField]) || 0,
+    ...row, // Keep original data for tooltip formatting
   }));
 
   const colors = styleConfig?.colors || [
@@ -38,6 +39,39 @@ export default function DoughnutChartWidget({
     "#84cc16",
   ];
   const showLegend = styleConfig?.showLegend !== false;
+
+  // Custom tooltip content
+  const renderTooltip = (props: any) => {
+    if (!props.active || !props.payload || !props.payload.length) return null;
+
+    const data = props.payload[0].payload;
+
+    if (tooltipConfig?.enabled && tooltipConfig?.format) {
+      // Replace placeholders in format string
+      let formatted = tooltipConfig.format;
+      Object.keys(data).forEach((key) => {
+        const value = data[key];
+        formatted = formatted.replace(
+          `{${key}}`,
+          typeof value === "number" ? value.toLocaleString() : value
+        );
+      });
+
+      return (
+        <div className="bg-white p-2 border border-gray-200 rounded shadow-lg">
+          <p className="text-sm">{formatted}</p>
+        </div>
+      );
+    }
+
+    // Default tooltip
+    return (
+      <div className="bg-white p-2 border border-gray-200 rounded shadow-lg">
+        <p className="text-sm font-semibold">{data.name}</p>
+        <p className="text-sm text-blue-600">{data.value?.toLocaleString()}</p>
+      </div>
+    );
+  };
 
   return (
     <Card className="h-full flex flex-col">
@@ -70,7 +104,7 @@ export default function DoughnutChartWidget({
                 />
               ))}
             </Pie>
-            <Tooltip />
+            <Tooltip content={renderTooltip} />
             {showLegend && <Legend />}
           </PieChart>
         </ResponsiveContainer>
