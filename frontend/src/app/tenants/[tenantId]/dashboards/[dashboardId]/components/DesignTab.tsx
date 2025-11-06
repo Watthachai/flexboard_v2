@@ -33,7 +33,8 @@ import {
   getDashboardVersions,
   getDashboardVersion,
 } from "@/lib/api";
-import { getAuth } from "firebase/auth";
+import { AIConfigAssistant } from "@/components/dashboard-wizard/AIConfigAssistant";
+import { useAuth } from "@/contexts/AuthContext";
 
 // Dynamically import Monaco Editor (client-side only)
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
@@ -91,6 +92,7 @@ export function DesignTab({
   onUpdate,
   onVersionChange,
 }: DesignTabProps) {
+  const { user } = useAuth();
   const [configText, setConfigText] = useState<string>("");
   const [columns, setColumns] = useState<TableColumn[]>([]);
   const [loadingColumns, setLoadingColumns] = useState(false);
@@ -259,15 +261,15 @@ export function DesignTab({
       setLoadingPreview(true);
 
       // Get auth token
-      const auth = getAuth();
-      const user = auth.currentUser;
       if (!user) {
         throw new Error("Not authenticated");
       }
       const token = await user.getIdToken(true);
 
       const response = await fetch(
-        `http://localhost:5001/api/tenants/${tenantId}/datasources/${
+        `${
+          process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001"
+        }/api/tenants/${tenantId}/datasources/${
           dashboard.dataSourceId
         }/preview?table=${encodeURIComponent(
           dashboard.selectedTable
@@ -817,17 +819,45 @@ export function DesignTab({
                 }
               }}
             >
-              <TabsList className="grid w-full grid-cols-3 shrink-0">
+              <TabsList className="grid w-full grid-cols-4 shrink-0">
+                <TabsTrigger value="ai">
+                  <Sparkles className="h-4 w-4 mr-1" />
+                  AI
+                </TabsTrigger>
                 <TabsTrigger value="columns">Columns</TabsTrigger>
                 <TabsTrigger value="preview">
                   <Table className="h-4 w-4 mr-1" />
-                  Preview
+                  Data
                 </TabsTrigger>
                 <TabsTrigger value="docs">
                   <BookOpen className="h-4 w-4 mr-1" />
                   Docs
                 </TabsTrigger>
               </TabsList>
+
+              {/* AI Assistant Tab */}
+              <TabsContent value="ai" className="flex-1 overflow-hidden mt-0">
+                <AIConfigAssistant
+                  tenantId={tenantId}
+                  currentConfig={(() => {
+                    try {
+                      return JSON.parse(configText);
+                    } catch {
+                      return null;
+                    }
+                  })()}
+                  tableSchema={{
+                    tableName: dashboard.selectedTable,
+                    columns: columns,
+                  }}
+                  onApplyConfig={(config) => {
+                    const newConfigText = JSON.stringify(config, null, 2);
+                    setConfigText(newConfigText);
+                    setHasDraftChanges(true);
+                    toast.success("AI configuration applied to editor!");
+                  }}
+                />
+              </TabsContent>
 
               {/* Available Columns */}
               <TabsContent value="columns" className="flex-1 overflow-hidden">

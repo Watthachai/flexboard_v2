@@ -649,3 +649,56 @@ export async function deleteApiKey(
     method: "DELETE",
   });
 }
+
+// ============================================
+// AI Assistant APIs
+// ============================================
+
+/**
+ * Generate dashboard configuration from natural language prompt
+ */
+export async function generateConfigWithAI(
+  tenantId: string,
+  data: {
+    prompt: string;
+    model?: string;
+    context?: {
+      tableSchema?: any;
+      currentConfig?: any;
+      widgetType?: string;
+    };
+  }
+): Promise<{
+  success: boolean;
+  config: any;
+  explanation?: string;
+  prompt: string;
+  model: string;
+}> {
+  return fetcher(`/api/tenants/${tenantId}/ai-assistant/generate-config`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Chat with AI assistant about dashboard configuration
+ */
+export async function chatWithAI(
+  tenantId: string,
+  data: {
+    message: string;
+    model?: string;
+    history?: Array<{ role: string; content: string }>;
+    context?: any;
+  }
+): Promise<{
+  success: boolean;
+  response: string;
+  model: string;
+}> {
+  return fetcher(`/api/tenants/${tenantId}/ai-assistant/chat`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}

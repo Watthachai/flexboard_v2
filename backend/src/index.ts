@@ -27,6 +27,9 @@ const serviceAccountEnvKey =
 
 console.log(`🌍 Environment: ${environment}`);
 console.log(`🔑 Using: ${serviceAccountEnvKey}`);
+console.log(
+  `🤖 Gemini API Key: ${process.env.GEMINI_API_KEY ? "✅ Set" : "❌ Not Set"}`
+);
 
 // Initialize Firebase Admin
 if (process.env[serviceAccountEnvKey]) {
@@ -80,6 +83,7 @@ import columnsRouter from "./routes/columns";
 import adminUIRouter from "./routes/adminUIReact"; // ใช้ React version
 import { onpremRouter } from "./routes/onprem"; // OnPrem API routes
 import { apiKeysRouter } from "./routes/apiKeys"; // API Keys management
+import aiAssistantRouter from "./routes/ai-assistant"; // AI Assistant routes
 
 // ===== Express App =====
 const app = express();
@@ -146,6 +150,7 @@ app.use("/api/tenants", tenantsRouter); // Fixed: Use tenantsRouter instead of c
 app.use("/api/tenants", dashboardsRouter); // Dashboard routes
 app.use("/api/tenants", dataSourcesRouter); // Data source routes
 app.use("/api/tenants/:tenantId/api-keys", apiKeysRouter); // API Keys management
+app.use("/api", aiAssistantRouter); // AI Assistant routes
 app.use("/api", columnsRouter); // Columns routes
 
 // Invite Codes Route
