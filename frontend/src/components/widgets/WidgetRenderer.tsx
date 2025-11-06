@@ -31,18 +31,18 @@ export default function WidgetRenderer({
 
   useEffect(() => {
     async function fetchData() {
-      console.log("WidgetRenderer Debug:", {
-        widgetId: widget.id,
-        widgetTitle: widget.title,
-        hasDataSourceId: !!dataSourceId,
-        dataSourceId,
-        hasDataConfig: !!widget.dataConfig,
-        dataConfig: widget.dataConfig,
-        hasQuery: !!widget.dataConfig?.query,
-        query: widget.dataConfig?.query,
-        hasTable: !!widget.dataConfig?.table,
-        table: widget.dataConfig?.table,
-      });
+      //console.log("WidgetRenderer Debug:", {
+      //widgetId: widget.id,
+      //widgetTitle: widget.title,
+      //hasDataSourceId: !!dataSourceId,
+      //dataSourceId,
+      //hasDataConfig: !!widget.dataConfig,
+      //dataConfig: widget.dataConfig,
+      //hasQuery: !!widget.dataConfig?.query,
+      //query: widget.dataConfig?.query,
+      //hasTable: !!widget.dataConfig?.table,
+      //table: widget.dataConfig?.table,
+      //});
 
       if (!dataSourceId || !widget.dataConfig) {
         setLoading(false);
@@ -112,14 +112,14 @@ export default function WidgetRenderer({
           widget.dataConfig.limit
         );
 
-        console.log("Query Result:", {
-          widgetId: widget.id,
-          widgetTitle: widget.title,
-          query,
-          resultData: result.data || result,
-          resultColumns: result.columns,
-          dataConfig: widget.dataConfig,
-        });
+        //console.log("Query Result:", {
+        //widgetId: widget.id,
+        //widgetTitle: widget.title,
+        //query,
+        //resultData: result.data || result,
+        //resultColumns: result.columns,
+        //dataConfig: widget.dataConfig,
+        //});
 
         setData({ data: result.data || result, columns: result.columns });
       } catch (err: any) {

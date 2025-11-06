@@ -67,9 +67,9 @@ export default function TenantsPage() {
 
     setLoading(true);
     try {
-      console.log("🔵 Loading tenants...");
+      //console.log("🔵 Loading tenants...");
       const data = await getAllTenants();
-      console.log("✅ Tenants loaded:", data);
+      //console.log("✅ Tenants loaded:", data);
 
       // Load dashboard count for each tenant
       const tenantsWithCounts = await Promise.all(

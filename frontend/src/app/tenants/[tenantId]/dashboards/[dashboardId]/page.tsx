@@ -203,7 +203,12 @@ export default function DashboardDetailPage() {
   };
 
   const handlePreviewClick = async () => {
-    if (!dashboard?.currentVersion) {
+    // Determine which version to preview
+    const versionToPreview = isViewingCurrent
+      ? dashboard?.currentVersion
+      : viewingVersion;
+
+    if (!versionToPreview) {
       toast.error("No version available to preview");
       return;
     }
@@ -213,11 +218,11 @@ export default function DashboardDetailPage() {
       setPreviewOpen(true);
 
       // Find the version ID from versions list
-      const currentVersionData = versions.find(
-        (v) => v.versionNumber === dashboard.currentVersion
+      const versionData = versions.find(
+        (v) => v.versionNumber === versionToPreview
       );
 
-      if (!currentVersionData) {
+      if (!versionData) {
         toast.error("Version not found");
         setPreviewOpen(false);
         return;
@@ -227,7 +232,7 @@ export default function DashboardDetailPage() {
       const versionWithConfig = await getDashboardVersion(
         tenantId,
         dashboardId,
-        currentVersionData.id
+        versionData.id
       );
 
       setPreviewConfig(versionWithConfig.config);
@@ -605,9 +610,24 @@ export default function DashboardDetailPage() {
             <DialogTitle className="flex items-center gap-2 text-2xl lg:text-3xl font-bold">
               <Eye className="h-6 w-6" />
               Dashboard Preview
+              {(() => {
+                const versionToShow = isViewingCurrent
+                  ? dashboard?.currentVersion
+                  : viewingVersion;
+                return (
+                  <Badge
+                    variant="outline"
+                    className="ml-2 text-base font-normal"
+                  >
+                    v{versionToShow}
+                  </Badge>
+                );
+              })()}
             </DialogTitle>
             <DialogDescription className="text-base lg:text-lg">
-              Preview your dashboard with live data
+              {isViewingCurrent
+                ? "Preview your dashboard with live data (Current Version)"
+                : `Preview of version ${viewingVersion} (Not Current)`}
             </DialogDescription>
           </DialogHeader>
 

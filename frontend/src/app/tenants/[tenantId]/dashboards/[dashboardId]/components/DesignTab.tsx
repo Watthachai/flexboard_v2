@@ -223,11 +223,11 @@ export function DesignTab({
 
     try {
       setLoadingColumns(true);
-      console.log("Loading columns for:", {
-        tenantId,
-        dataSourceId: dashboard.dataSourceId,
-        table: dashboard.selectedTable,
-      });
+      //console.log("Loading columns for:", {
+      //tenantId,
+      //dataSourceId: dashboard.dataSourceId,
+      //table: dashboard.selectedTable,
+      //});
 
       const data = await getDataSourceColumns(
         tenantId,
@@ -235,7 +235,7 @@ export function DesignTab({
         dashboard.selectedTable
       );
 
-      console.log("Columns data received:", data);
+      //console.log("Columns data received:", data);
 
       if (data.columns && Array.isArray(data.columns)) {
         setColumns(data.columns);
