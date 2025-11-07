@@ -338,8 +338,8 @@ export function DesignTab({
     }
   };
 
-  // Publish as new version OR update existing version
-  const handlePublishVersion = async () => {
+  // Save current config (update existing version)
+  const handleSaveConfig = async () => {
     if (!isValid) {
       toast.error("Invalid JSON format. Please fix the errors first.");
       return;
@@ -349,7 +349,6 @@ export function DesignTab({
       setIsSaving(true);
       const config = JSON.parse(configText);
 
-      // Check if we're updating an existing version or creating new one
       if (isVersionChanged && selectedVersion) {
         // UPDATE existing version
         const result = await updateDashboardVersion(
@@ -363,21 +362,64 @@ export function DesignTab({
         );
 
         console.log("Version updated:", result);
-        toast.success(
-          `Version ${selectedVersion} updated! Use "Publish Dashboard" button above to activate it.`
-        );
+        toast.success(`Version ${selectedVersion} updated successfully!`);
       } else {
-        // CREATE new version
-        const result = await createDashboardVersion(tenantId, dashboardId, {
-          config,
-          changeLog: `Updated configuration`,
-        });
+        // Save to current active version by updating current dashboard version
+        const currentVersionToUpdate =
+          dashboard?.currentVersion || selectedVersion;
 
-        console.log("Version created:", result);
-        toast.success(
-          `Version ${result.versionNumber} created! Use "Publish Dashboard" button above to activate it.`
+        if (!currentVersionToUpdate) {
+          toast.error("No version available to update");
+          return;
+        }
+
+        const result = await updateDashboardVersion(
+          tenantId,
+          dashboardId,
+          currentVersionToUpdate,
+          {
+            config,
+            changeLog: `Configuration updated`,
+          }
         );
+
+        console.log("Current version updated:", result);
+        toast.success("Configuration saved to database successfully!");
       }
+
+      setOriginalConfig(configText);
+      setHasDraftChanges(false);
+
+      // Don't call onUpdate to avoid page reload
+    } catch (err: any) {
+      console.error("Error saving config:", err);
+      toast.error(err.message || "Failed to save config");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Publish as new version (always create new version)
+  const handlePublishVersion = async () => {
+    if (!isValid) {
+      toast.error("Invalid JSON format. Please fix the errors first.");
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      const config = JSON.parse(configText);
+
+      // Always CREATE new version
+      const result = await createDashboardVersion(tenantId, dashboardId, {
+        config,
+        changeLog: `New version created`,
+      });
+
+      console.log("Version created:", result);
+      toast.success(
+        `Version ${result.versionNumber} created! Use "Publish Dashboard" button above to activate it.`
+      );
 
       // Reload versions and update state
       await loadVersions();
@@ -390,8 +432,8 @@ export function DesignTab({
         onUpdate({});
       }
     } catch (err: any) {
-      console.error("Error saving version:", err);
-      toast.error(err.message || "Failed to save version");
+      console.error("Error creating new version:", err);
+      toast.error(err.message || "Failed to create new version");
     } finally {
       setIsSaving(false);
     }
@@ -879,12 +921,21 @@ export function DesignTab({
                   Discard
                 </Button>
                 <Button
+                  onClick={handleSaveConfig}
+                  disabled={!isValid || isSaving}
+                  size="sm"
+                  variant="outline"
+                >
+                  {isSaving ? "Saving..." : "Save Config"}
+                </Button>
+                <Button
                   onClick={handlePublishVersion}
                   disabled={!isValid || isSaving}
                   size="sm"
+                  className="bg-green-600 hover:bg-green-700 text-white"
                 >
                   <Sparkles className="h-4 w-4 mr-2" />
-                  {isSaving ? "Saving..." : "Save"}
+                  Publish as New Version
                 </Button>
               </>
             ) : (
