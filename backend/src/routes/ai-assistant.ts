@@ -270,12 +270,12 @@ WIDGET CONFIG STRUCTURE:
 {
   "id": "widget_X",
   "title": "Widget Title",
-  "type": "bar|line|pie|doughnut|kpi|table|gauge",
+  "type": "bar|line|pie|kpi|table|gauge",
   "position": { "x": 0, "y": 0, "w": 6, "h": 4 },
   "dataConfig": {
     "table": "table_name",
     "xField": "column_name",
-    "yField": "column_name",
+    "yField": "column_name", 
     "aggregation": "sum|avg|count|min|max",
     "groupBy": ["column_name"],
     "orderBy": [{ "field": "column_name", "direction": "ASC|DESC" }],
@@ -286,6 +286,7 @@ WIDGET CONFIG STRUCTURE:
     "colors": ["#3b82f6", "#8b5cf6"],
     "showLegend": true,
     "showGrid": true,
+    "showLabels": true,
     "prefix": "฿",
     "suffix": " units"
   },
@@ -298,11 +299,18 @@ WIDGET CONFIG STRUCTURE:
 
 WIDGET TYPES:
 - bar: Bar chart for comparing categories
-- line: Line chart for trends over time
-- pie/doughnut: Part-to-whole relationships (limit 5-8 slices)
+- line: Line chart for trends over time  
+- pie: Pie chart for part-to-whole relationships (limit 5-8 slices)
 - kpi: Single key metric with prefix/suffix
 - table: Detailed tabular data
 - gauge: Progress/capacity metrics
+
+CRITICAL RULES:
+1. ALWAYS use "pie" instead of "donut" or "doughnut"
+2. orderBy MUST be array format: [{ "field": "column", "direction": "ASC|DESC" }]
+3. ALWAYS include "groupBy" when using aggregation with xField
+4. For KPI widgets, use "yField" for the value field (not "valueField")
+5. Include tooltipConfig for better user experience
 
 SMART POSITIONING:
 - When adding widgets to existing config, calculate positions to avoid overlap
@@ -407,6 +415,60 @@ IMPORTANT: Return ONLY a JSON object with "explanation" and "config" fields. No 
               widget.position = { x: 0, y: 0, w: 6, h: 4 };
             }
 
+            // Fix widget type issues
+            if (widget.type === "donut" || widget.type === "doughnut") {
+              widget.type = "pie";
+            }
+
+            // Fix dataConfig issues
+            if (widget.dataConfig) {
+              // Fix orderBy format - convert string to array format
+              if (
+                widget.dataConfig.orderBy &&
+                typeof widget.dataConfig.orderBy === "string"
+              ) {
+                const direction = widget.dataConfig.orderDirection || "DESC";
+                widget.dataConfig.orderBy = [
+                  {
+                    field: widget.dataConfig.orderBy,
+                    direction: direction.toUpperCase(),
+                  },
+                ];
+                delete widget.dataConfig.orderDirection;
+              }
+
+              // Fix KPI valueField -> yField
+              if (
+                widget.type === "kpi" &&
+                widget.dataConfig.valueField &&
+                !widget.dataConfig.yField
+              ) {
+                widget.dataConfig.yField = widget.dataConfig.valueField;
+                delete widget.dataConfig.valueField;
+              }
+
+              // Ensure groupBy for aggregated fields
+              if (
+                widget.dataConfig.aggregation &&
+                widget.dataConfig.xField &&
+                !widget.dataConfig.groupBy
+              ) {
+                widget.dataConfig.groupBy = [widget.dataConfig.xField];
+              }
+            }
+
+            // Add tooltipConfig if missing
+            if (
+              !widget.tooltipConfig &&
+              widget.dataConfig?.xField &&
+              widget.dataConfig?.yField
+            ) {
+              widget.tooltipConfig = {
+                enabled: true,
+                format: `{${widget.dataConfig.xField}}: {${widget.dataConfig.yField}}`,
+              };
+            }
+
             return widget;
           }
         );
@@ -499,6 +561,13 @@ When user asks to MODIFY/CHANGE an existing widget:
 1. Respond with explanation in plain text
 2. Then add ONLY the modified widget(s) in JSON format
 3. DO NOT send the entire dashboard config - only the widget(s) being changed
+
+CRITICAL CONFIG RULES:
+1. ALWAYS use "pie" instead of "donut" or "doughnut"
+2. orderBy MUST be array format: [{ "field": "column", "direction": "ASC|DESC" }]
+3. ALWAYS include "groupBy" when using aggregation with xField
+4. For KPI widgets, use "yField" for the value field (not "valueField")
+5. Include tooltipConfig for better user experience
 
 CORRECT Example (modifying 1 widget):
 "ได้เลยครับ! ผมจะเปลี่ยนสี widget 'Top 10 Products' เป็นสีน้ำเงินเข้ม #1e3a8a
@@ -662,8 +731,65 @@ Be concise, friendly, and actionable. Provide specific examples when helpful. Al
       }
 
       if (widgets.length > 0) {
+        // Apply same fixes as in generate-config endpoint
+        const fixedWidgets = widgets.map((widget: any) => {
+          // Fix widget type issues
+          if (widget.type === "donut" || widget.type === "doughnut") {
+            widget.type = "pie";
+          }
+
+          // Fix dataConfig issues
+          if (widget.dataConfig) {
+            // Fix orderBy format
+            if (
+              widget.dataConfig.orderBy &&
+              typeof widget.dataConfig.orderBy === "string"
+            ) {
+              const direction = widget.dataConfig.orderDirection || "DESC";
+              widget.dataConfig.orderBy = [
+                {
+                  field: widget.dataConfig.orderBy,
+                  direction: direction.toUpperCase(),
+                },
+              ];
+              delete widget.dataConfig.orderDirection;
+            }
+
+            // Fix KPI valueField -> yField
+            if (
+              widget.type === "kpi" &&
+              widget.dataConfig.valueField &&
+              !widget.dataConfig.yField
+            ) {
+              widget.dataConfig.yField = widget.dataConfig.valueField;
+              delete widget.dataConfig.valueField;
+            }
+
+            // Ensure groupBy for aggregated fields
+            if (
+              widget.dataConfig.aggregation &&
+              widget.dataConfig.xField &&
+              !widget.dataConfig.groupBy
+            ) {
+              widget.dataConfig.groupBy = [widget.dataConfig.xField];
+            }
+
+            // Add tooltipConfig if missing
+            if (!widget.tooltipConfig) {
+              const fields = [];
+              if (widget.dataConfig.xField)
+                fields.push(widget.dataConfig.xField);
+              if (widget.dataConfig.yField)
+                fields.push(widget.dataConfig.yField);
+              widget.tooltipConfig = { fields };
+            }
+          }
+
+          return widget;
+        });
+
         extractedConfig = {
-          widgets: widgets,
+          widgets: fixedWidgets,
         };
         console.log(
           `✅ Extracted ${widgets.length} widget(s) from AI response`
