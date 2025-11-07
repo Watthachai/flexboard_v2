@@ -288,6 +288,41 @@ BE AGENT-LIKE:
 - Be conversational and helpful
 - Respond in the same language as the user's question
 
+CRITICAL: HOW TO RESPOND WITH CONFIG CHANGES
+========================================
+When user asks to MODIFY/CHANGE an existing widget:
+1. Respond with explanation in plain text
+2. Then add ONLY the modified widget(s) in JSON format
+3. DO NOT send the entire dashboard config - only the widget(s) being changed
+
+CORRECT Example (modifying 1 widget):
+"ได้เลยครับ! ผมจะเปลี่ยนสี widget 'Top 10 Products' เป็นสีน้ำเงินเข้ม #1e3a8a
+
+Here's the updated widget:
+
+{
+  "id": "widget_1",
+  "title": "Top 10 Products by Sales",
+  "type": "bar",
+  "position": { "x": 0, "y": 0, "w": 6, "h": 4 },
+  "dataConfig": { ... },
+  "styleConfig": {
+    "color": "#1e3a8a"
+  }
+}"
+
+WRONG Example (sending entire config - NEVER DO THIS):
+{
+  "layout": "grid",
+  "widgets": [ ... all 8 widgets ... ]  ❌ DON'T DO THIS!
+}
+
+When to send FULL config vs WIDGET only:
+- User says "เปลี่ยนสี widget X" → Send ONLY that widget
+- User says "แก้ไข 2 widget" → Send ONLY those 2 widgets  
+- User says "เพิ่ม widget ใหม่" → Send ONLY the new widget
+- User says "สร้าง dashboard ใหม่" → Send FULL config
+
 ${
   currentConfig
     ? `\nCURRENT DASHBOARD STATE:\n${JSON.stringify(
@@ -351,9 +386,75 @@ Be concise, friendly, and actionable. Provide specific examples when helpful. Al
     const response = await result.response;
     const text = response.text();
 
+    // Try to extract JSON config from the response
+    let extractedConfig = null;
+
+    // Try to match full dashboard config first
+    let jsonMatch = text.match(/\{[\s\S]*?"layout"[\s\S]*?"widgets"[\s\S]*?\}/);
+
+    if (jsonMatch) {
+      try {
+        extractedConfig = JSON.parse(jsonMatch[0]);
+        console.log("✅ Extracted FULL dashboard config from AI response");
+      } catch (e) {
+        console.log("⚠️ Found full config pattern but couldn't parse");
+      }
+    }
+
+    // If no full config, try to extract widgets using proper JSON parsing
+    if (!extractedConfig) {
+      // Find all balanced JSON objects by counting braces
+      const widgets: any[] = [];
+      let depth = 0;
+      let start = -1;
+
+      for (let i = 0; i < text.length; i++) {
+        if (text[i] === "{") {
+          if (depth === 0) start = i;
+          depth++;
+        } else if (text[i] === "}") {
+          depth--;
+          if (depth === 0 && start !== -1) {
+            // Found a complete JSON object
+            const jsonStr = text.substring(start, i + 1);
+            try {
+              const parsed = JSON.parse(jsonStr);
+              // Check if this looks like a widget
+              if (
+                parsed.id &&
+                parsed.type &&
+                typeof parsed.id === "string" &&
+                parsed.id.startsWith("widget_")
+              ) {
+                widgets.push(parsed);
+                console.log(
+                  `✅ Found widget: ${parsed.id} (${
+                    parsed.title || "untitled"
+                  })`
+                );
+              }
+            } catch (e) {
+              // Not valid JSON, skip
+            }
+            start = -1;
+          }
+        }
+      }
+
+      if (widgets.length > 0) {
+        extractedConfig = {
+          widgets: widgets,
+        };
+        console.log(
+          `✅ Extracted ${widgets.length} widget(s) from AI response`
+        );
+      }
+    }
+
     res.json({
       success: true,
       response: text,
+      config: extractedConfig, // Include config if found
       model: selectedModel,
     });
   } catch (error: any) {
