@@ -122,7 +122,10 @@ export default function WidgetRenderer({
             selectFields.length > 0 ? selectFields.join(", ") : "*";
 
           // For SQL Server, use TOP instead of LIMIT/OFFSET
-          const topClause = limit ? `TOP ${limit} ` : "";
+          // Skip TOP if unlimited is true or limit is 0/-1
+          const shouldLimit =
+            limit && limit > 0 && !widget.dataConfig?.unlimited;
+          const topClause = shouldLimit ? `TOP ${limit} ` : "";
           query = `SELECT ${topClause}${selectClause} FROM ${table}`;
 
           // Add WHERE clause for filters

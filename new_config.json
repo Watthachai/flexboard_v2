@@ -57,7 +57,6 @@
         "aggregation": "sum",
         "groupBy": ["prodName"],
         "orderBy": [{ "field": "totalFromBuyPrice", "direction": "DESC" }],
-        "limit": 15,
         "filters": [
           {
             "field": "totalFromBuyPrice",
@@ -180,8 +179,7 @@
         "yField": "totalFromBuyPrice",
         "aggregation": "sum",
         "groupBy": ["prodGrp"],
-        "orderBy": [{ "field": "totalFromBuyPrice", "direction": "DESC" }],
-        "limit": 10
+        "orderBy": [{ "field": "totalFromBuyPrice", "direction": "DESC" }]
       },
       "styleConfig": {
         "areaOpacity": 0.7,
@@ -215,7 +213,6 @@
         "aggregation": "sum",
         "groupBy": ["prodGrp"],
         "orderBy": [{ "field": "totalFromBuyPrice", "direction": "DESC" }],
-        "limit": 8,
         "otherThreshold": 0.02
       },
       "styleConfig": {
@@ -297,8 +294,7 @@
       "dataConfig": {
         "table": "VVPVSG_INVENTORY_001_VIEW_001",
         "xField": "buyPrice",
-        "yField": "qtyFromThisDoc",
-        "limit": 200
+        "yField": "qtyFromThisDoc"
       },
       "styleConfig": {
         "pointOpacity": 0.7,
@@ -391,8 +387,7 @@
             "align": "right"
           }
         ],
-        "orderBy": [{ "field": "totalFromBuyPrice", "direction": "DESC" }],
-        "limit": 100
+        "orderBy": [{ "field": "totalFromBuyPrice", "direction": "DESC" }]
       },
       "styleConfig": {
         "showPagination": true,

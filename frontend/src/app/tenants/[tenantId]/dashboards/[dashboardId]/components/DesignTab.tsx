@@ -1533,10 +1533,28 @@ function ConfigDocumentation() {
             <p className="text-gray-600 mt-1">Y-axis/value column name</p>
           </div>
           <div>
+            <code className="bg-purple-100 px-1 rounded">labelField</code>
+            <p className="text-gray-600 mt-1">
+              Label field for pie/doughnut charts (alternative to xField)
+            </p>
+          </div>
+          <div>
+            <code className="bg-purple-100 px-1 rounded">valueField</code>
+            <p className="text-gray-600 mt-1">
+              Value field for pie/doughnut charts (alternative to yField)
+            </p>
+          </div>
+          <div>
+            <code className="bg-purple-100 px-1 rounded">field</code>
+            <p className="text-gray-600 mt-1">
+              Single field for KPI/metric widgets
+            </p>
+          </div>
+          <div>
             <code className="bg-purple-100 px-1 rounded">aggregation</code>
             <p className="text-gray-600 mt-1">
               &quot;sum&quot; | &quot;avg&quot; | &quot;count&quot; |
-              &quot;min&quot; | &quot;max&quot;
+              &quot;count_distinct&quot; | &quot;min&quot; | &quot;max&quot;
             </p>
           </div>
           <div>
@@ -1553,9 +1571,40 @@ function ConfigDocumentation() {
             </p>
           </div>
           <div>
+            <code className="bg-purple-100 px-1 rounded">filters</code>
+            <p className="text-gray-600 mt-1">
+              Array: [
+              {`{ "field": "status", "operator": "=", "value": "active" }`}]
+            </p>
+          </div>
+          <div>
+            <code className="bg-purple-100 px-1 rounded">having</code>
+            <p className="text-gray-600 mt-1">
+              Post-aggregation filter:{" "}
+              {`{ "field": "total", "operator": ">", "value": 1000 }`}
+            </p>
+          </div>
+          <div>
             <code className="bg-purple-100 px-1 rounded">limit</code>
             <p className="text-gray-600 mt-1">
               Max rows (optional, no limit if omitted)
+            </p>
+          </div>
+          <div>
+            <code className="bg-purple-100 px-1 rounded">unlimited</code>
+            <p className="text-gray-600 mt-1">
+              Boolean: true to fetch all data (overrides limit)
+            </p>
+          </div>
+          <div className="pt-2 border-t border-gray-200">
+            <p className="text-gray-700 font-semibold mb-1">
+              💡 Advanced Field Options:
+            </p>
+            <p className="text-gray-600 text-xs">
+              • Use <code>labelField/valueField</code> for pie/doughnut charts
+              <br />• Use <code>field</code> for single-value widgets
+              (KPI/metric)
+              <br />• Use <code>xField/yField</code> for traditional charts
             </p>
           </div>
           <div className="pt-2 border-t border-gray-200">
@@ -1637,6 +1686,62 @@ function ConfigDocumentation() {
             <code className="bg-orange-100 px-1 rounded">max</code>
             <p className="text-gray-600 mt-1">
               Range for gauge widget (e.g., 0-100)
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Advanced Data Config */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">🚀 Advanced Data Config</CardTitle>
+        </CardHeader>
+        <CardContent className="text-xs space-y-2">
+          <div>
+            <code className="bg-blue-100 px-1 rounded">target</code>
+            <p className="text-gray-600 mt-1">
+              Target value for KPI/metric widgets
+            </p>
+          </div>
+          <div>
+            <code className="bg-blue-100 px-1 rounded">thresholds</code>
+            <p className="text-gray-600 mt-1">
+              {`{ "warning": 50, "critical": 75, "excellent": 90 }`}
+            </p>
+          </div>
+          <div>
+            <code className="bg-blue-100 px-1 rounded">format</code>
+            <p className="text-gray-600 mt-1">
+              Custom format string: &quot;฿{`{value:,.2f}`}&quot;
+            </p>
+          </div>
+          <div>
+            <code className="bg-blue-100 px-1 rounded">icon</code>
+            <p className="text-gray-600 mt-1">
+              Icon for metric cards: &quot;💰&quot;
+            </p>
+          </div>
+          <div>
+            <code className="bg-blue-100 px-1 rounded">description</code>
+            <p className="text-gray-600 mt-1">Description text for widgets</p>
+          </div>
+          <div>
+            <code className="bg-blue-100 px-1 rounded">ranges</code>
+            <p className="text-gray-600 mt-1">
+              Gauge ranges: [
+              {`{ "min": 0, "max": 50, "color": "#ef4444", "label": "Low" }`}]
+            </p>
+          </div>
+          <div>
+            <code className="bg-blue-100 px-1 rounded">metrics</code>
+            <p className="text-gray-600 mt-1">
+              Multiple metrics array for metric cards
+            </p>
+          </div>
+          <div>
+            <code className="bg-blue-100 px-1 rounded">progressBars</code>
+            <p className="text-gray-600 mt-1">
+              Multiple progress indicators array
             </p>
           </div>
         </CardContent>
@@ -1828,6 +1933,157 @@ LIMIT 10`}
 }`}
               </pre>
             </div>
+
+            <div>
+              <p className="text-xs font-semibold text-gray-700 mb-2">
+                🥧 Advanced Pie Chart (labelField/valueField):
+              </p>
+              <pre className="text-xs bg-pink-50 p-3 rounded overflow-x-auto whitespace-pre-wrap break-all">
+                {`{
+  "id": "widget_5",
+  "title": "Revenue by Product Group",
+  "type": "pie",
+  "position": { "x": 0, "y": 6, "w": 4, "h": 4 },
+  "dataConfig": {
+    "table": "sales_data",
+    "labelField": "prodGrp",
+    "valueField": "totalFromBuyPrice",
+    "aggregation": "sum",
+    "groupBy": ["prodGrp"]
+  },
+  "tooltipConfig": {
+    "enabled": true,
+    "format": "{prodGrp}: ฿{totalFromBuyPrice:,.2f}"
+  },
+  "visible": true
+}`}
+              </pre>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-gray-700 mb-2">
+                📊 Advanced Metric with Thresholds:
+              </p>
+              <pre className="text-xs bg-teal-50 p-3 rounded overflow-x-auto whitespace-pre-wrap break-all">
+                {`{
+  "id": "widget_6",
+  "title": "Monthly Sales KPI",
+  "type": "metric",
+  "position": { "x": 4, "y": 6, "w": 3, "h": 2 },
+  "dataConfig": {
+    "field": "totalFromBuyPrice",
+    "aggregation": "sum",
+    "target": 1000000,
+    "thresholds": {
+      "warning": 500000,
+      "critical": 750000,
+      "excellent": 1200000
+    },
+    "format": "฿{value:,.0f}",
+    "icon": "💰",
+    "description": "Total sales this month"
+  },
+  "visible": true
+}`}
+              </pre>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-gray-700 mb-2">
+                📈 Multi-Progress Indicators:
+              </p>
+              <pre className="text-xs bg-indigo-50 p-3 rounded overflow-x-auto whitespace-pre-wrap break-all">
+                {`{
+  "id": "widget_7",
+  "title": "Sales Performance Dashboard",
+  "type": "progress",
+  "position": { "x": 7, "y": 6, "w": 5, "h": 3 },
+  "dataConfig": {
+    "progressBars": [
+      {
+        "name": "revenue",
+        "field": "totalFromBuyPrice",
+        "aggregation": "sum",
+        "label": "Revenue",
+        "target": 1000000,
+        "color": "#10b981"
+      },
+      {
+        "name": "quantity",
+        "field": "qtyFromThisDoc",
+        "aggregation": "sum",
+        "label": "Quantity Sold",
+        "target": 5000,
+        "color": "#3b82f6"
+      }
+    ]
+  },
+  "visible": true
+}`}
+              </pre>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-gray-700 mb-2">
+                ⚡ Advanced Gauge with Ranges:
+              </p>
+              <pre className="text-xs bg-amber-50 p-3 rounded overflow-x-auto whitespace-pre-wrap break-all">
+                {`{
+  "id": "widget_8",
+  "title": "Performance Score",
+  "type": "gauge",
+  "position": { "x": 0, "y": 10, "w": 4, "h": 4 },
+  "dataConfig": {
+    "field": "performanceScore",
+    "aggregation": "avg",
+    "min": 0,
+    "max": 100,
+    "target": 85,
+    "ranges": [
+      { "min": 0, "max": 40, "color": "#ef4444", "label": "Critical" },
+      { "min": 40, "max": 70, "color": "#f59e0b", "label": "Warning" },
+      { "min": 70, "max": 85, "color": "#3b82f6", "label": "Good" },
+      { "min": 85, "max": 100, "color": "#10b981", "label": "Excellent" }
+    ],
+    "format": "{value}%"
+  },
+  "visible": true
+}`}
+              </pre>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-gray-700 mb-2">
+                📋 No Limit Data Fetching:
+              </p>
+              <pre className="text-xs bg-gray-50 p-3 rounded overflow-x-auto whitespace-pre-wrap break-all">
+                {`{
+  "id": "widget_9",
+  "title": "All Products Analysis",
+  "type": "bar",
+  "position": { "x": 4, "y": 10, "w": 8, "h": 5 },
+  "dataConfig": {
+    "table": "products",
+    "xField": "category",
+    "yField": "sales",
+    "aggregation": "sum",
+    "groupBy": ["category"],
+    "unlimited": true,
+    "filters": [
+      {
+        "field": "status",
+        "operator": "=",
+        "value": "active"
+      }
+    ],
+    "orderBy": [
+      { "field": "sales", "direction": "DESC" }
+    ]
+  },
+  "visible": true
+}`}
+              </pre>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -1923,8 +2179,50 @@ LIMIT 10`}
               🔢 Need to remove data limit?
             </p>
             <p className="text-gray-600 mt-1">
-              Just omit the <code>limit</code> field from{" "}
-              <code>dataConfig</code>
+              Set <code>&quot;unlimited&quot;: true</code> or omit the{" "}
+              <code>limit</code> field from <code>dataConfig</code>
+            </p>
+          </div>
+          <div>
+            <p className="text-gray-700 font-semibold">
+              🥧 Pie Chart using labelField/valueField?
+            </p>
+            <p className="text-gray-600 mt-1">
+              Use <code>labelField</code> + <code>valueField</code> instead of{" "}
+              <code>xField</code> + <code>yField</code>
+            </p>
+          </div>
+          <div>
+            <p className="text-gray-700 font-semibold">
+              📊 Multi-metrics not showing?
+            </p>
+            <p className="text-gray-600 mt-1">
+              Use <code>metrics</code> array for multiple metric cards
+            </p>
+          </div>
+          <div>
+            <p className="text-gray-700 font-semibold">
+              📈 Multiple progress bars?
+            </p>
+            <p className="text-gray-600 mt-1">
+              Use <code>progressBars</code> array instead of single field
+            </p>
+          </div>
+          <div>
+            <p className="text-gray-700 font-semibold">
+              🎯 Thresholds not working?
+            </p>
+            <p className="text-gray-600 mt-1">
+              Ensure <code>thresholds</code> values match your data range
+            </p>
+          </div>
+          <div>
+            <p className="text-gray-700 font-semibold">
+              🔍 Advanced filtering?
+            </p>
+            <p className="text-gray-600 mt-1">
+              Use <code>filters</code> array with operators: =, {">"}, {"<"},
+              LIKE, IN
             </p>
           </div>
           <div>
@@ -1961,6 +2259,140 @@ LIMIT 10`}
               Set <code>min/max</code> in <code>dataConfig</code> to define
               gauge scale (e.g., 0-100)
             </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 🚀 Advanced Enterprise Features */}
+      <Card className="bg-linear-to-br from-indigo-50 to-blue-50 border-indigo-200">
+        <CardContent className="py-6">
+          <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+            🚀 Advanced Enterprise Features
+          </h3>
+
+          <div className="mb-6">
+            <h4 className="text-md font-semibold text-indigo-800 mb-3">
+              🎯 Real-time Thresholds & Targets
+            </h4>
+            <div className="bg-white border border-indigo-100 rounded-lg p-4">
+              <pre className="text-sm text-gray-700 overflow-x-auto">
+                {`// Advanced Gauge with Color-Coded Ranges
+{
+  "id": "performance-gauge",
+  "type": "gauge",
+  "title": "System Performance",
+  "dataConfig": {
+    "table": "metrics", 
+    "field": "cpu_usage",
+    "unlimited": true
+  },
+  "chartConfig": {
+    "ranges": [
+      {"min": 0, "max": 60, "color": "#10B981"},
+      {"min": 60, "max": 85, "color": "#F59E0B"}, 
+      {"min": 85, "max": 100, "color": "#EF4444"}
+    ],
+    "target": 75
+  }
+}`}
+              </pre>
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <h4 className="text-md font-semibold text-indigo-800 mb-3">
+              📊 Multi-Metric Dashboards
+            </h4>
+            <div className="bg-white border border-indigo-100 rounded-lg p-4">
+              <pre className="text-sm text-gray-700 overflow-x-auto">
+                {`// Multiple Progress Indicators
+{
+  "id": "kpi-progress",
+  "type": "progress",
+  "title": "KPI Dashboard",
+  "dataConfig": {
+    "table": "kpis",
+    "unlimited": true
+  },
+  "chartConfig": {
+    "progressBars": [
+      {
+        "field": "sales_progress",
+        "label": "Sales Target",
+        "target": 100,
+        "color": "#3B82F6"
+      },
+      {
+        "field": "support_score", 
+        "label": "Support Quality",
+        "target": 95,
+        "color": "#10B981"
+      }
+    ]
+  }
+}`}
+              </pre>
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <h4 className="text-md font-semibold text-indigo-800 mb-3">
+              🔄 Dynamic Data Processing
+            </h4>
+            <div className="bg-white border border-indigo-100 rounded-lg p-4">
+              <pre className="text-sm text-gray-700 overflow-x-auto">
+                {`// Advanced Filtering & Grouping
+{
+  "id": "sales-analysis",
+  "type": "pie",
+  "title": "Sales by Region (Filtered)",
+  "dataConfig": {
+    "table": "sales",
+    "labelField": "region_name",
+    "valueField": "total_amount",
+    "filters": [
+      {"field": "status", "operator": "=", "value": "completed"},
+      {"field": "amount", "operator": ">", "value": 1000},
+      {"field": "created_date", "operator": ">=", "value": "2024-01-01"}
+    ],
+    "having": [
+      {"field": "total_amount", "operator": ">", "value": 50000}
+    ],
+    "groupBy": ["region_name"],
+    "orderBy": "total_amount DESC",
+    "unlimited": true
+  }
+}`}
+              </pre>
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <h4 className="text-md font-semibold text-indigo-800 mb-3">
+              ⚡ Enterprise Features Summary
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-white border border-indigo-100 rounded-lg p-3">
+                <p className="font-medium text-indigo-700">🎯 Smart Coloring</p>
+                <p className="text-sm text-gray-600">Threshold-based colors</p>
+              </div>
+              <div className="bg-white border border-indigo-100 rounded-lg p-3">
+                <p className="font-medium text-indigo-700">📈 Multi-Progress</p>
+                <p className="text-sm text-gray-600">
+                  Multiple progress indicators
+                </p>
+              </div>
+              <div className="bg-white border border-indigo-100 rounded-lg p-3">
+                <p className="font-medium text-indigo-700">
+                  🔍 Advanced Filters
+                </p>
+                <p className="text-sm text-gray-600">Complex data filtering</p>
+              </div>
+              <div className="bg-white border border-indigo-100 rounded-lg p-3">
+                <p className="font-medium text-indigo-700">♾️ Unlimited Data</p>
+                <p className="text-sm text-gray-600">No artificial limits</p>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
