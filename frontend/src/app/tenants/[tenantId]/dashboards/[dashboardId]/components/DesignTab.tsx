@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Database,
   Sparkles,
-  Save,
   Copy,
   RotateCcw,
   BookOpen,
@@ -337,19 +336,6 @@ export function DesignTab({
     } catch {
       setIsValid(false);
     }
-  };
-
-  // Save as draft (update current config without creating new version)
-  const handleSaveDraft = () => {
-    if (!isValid) {
-      toast.error("Invalid JSON format. Please fix the errors first.");
-      return;
-    }
-
-    // Just update the original config to mark as saved
-    setOriginalConfig(configText);
-    setHasDraftChanges(false);
-    toast.success("Draft saved locally!");
   };
 
   // Publish as new version OR update existing version
@@ -785,7 +771,7 @@ export function DesignTab({
                 variant="secondary"
                 className="bg-amber-100 text-amber-800"
               >
-                Draft Changes
+                Config Changes
               </Badge>
             )}
             {isVersionChanged && !hasDraftChanges && (
@@ -893,40 +879,17 @@ export function DesignTab({
                   Discard
                 </Button>
                 <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSaveDraft}
-                  disabled={!isValid}
-                >
-                  <Save className="h-4 w-4 mr-2" />
-                  Save Draft
-                </Button>
-                <Button
                   onClick={handlePublishVersion}
                   disabled={!isValid || isSaving}
                   size="sm"
                 >
                   <Sparkles className="h-4 w-4 mr-2" />
-                  {isSaving
-                    ? "Saving..."
-                    : isVersionChanged
-                    ? `Save Config for v${selectedVersion}`
-                    : "Save as New Version"}
+                  {isSaving ? "Saving..." : "Save"}
                 </Button>
               </>
             ) : (
-              // Default state - no changes
-              <>
-                <Button
-                  onClick={handleSaveDraft}
-                  disabled={!isValid}
-                  size="sm"
-                  variant="outline"
-                >
-                  <Save className="h-4 w-4 mr-2" />
-                  Save Draft
-                </Button>
-              </>
+              // Default state - no changes - hide all buttons
+              <></>
             )}
           </div>
         </div>
