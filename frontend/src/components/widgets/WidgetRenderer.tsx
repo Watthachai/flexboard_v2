@@ -8,11 +8,15 @@ import { Loader2 } from "lucide-react";
 // Import chart components
 import BarChartWidget from "./BarChartWidget";
 import LineChartWidget from "./LineChartWidget";
+import AreaChartWidget from "./AreaChartWidget";
 import PieChartWidget from "./PieChartWidget";
 import DoughnutChartWidget from "./DoughnutChartWidget";
 import TableWidget from "./TableWidget";
 import KPIWidget from "./KPIWidget";
 import GaugeWidget from "./GaugeWidget";
+import ProgressBarWidget from "./ProgressBarWidget";
+import MetricCardWidget from "./MetricCardWidget";
+import ScatterPlotWidget from "./ScatterPlotWidget";
 
 interface WidgetRendererProps {
   widget: any;
@@ -187,9 +191,12 @@ export default function WidgetRenderer({
         return <BarChartWidget widget={widget} data={data} />;
       case "line":
         return <LineChartWidget widget={widget} data={data} />;
+      case "area":
+        return <AreaChartWidget widget={widget} data={data} />;
       case "pie":
         return <PieChartWidget widget={widget} data={data} />;
       case "doughnut":
+      case "donut": // Alias for doughnut
         return <DoughnutChartWidget widget={widget} data={data} />;
       case "table":
         return <TableWidget widget={widget} data={data} />;
@@ -197,6 +204,15 @@ export default function WidgetRenderer({
         return <KPIWidget widget={widget} data={data} />;
       case "gauge":
         return <GaugeWidget widget={widget} data={data} />;
+      case "progress":
+      case "progressbar":
+        return <ProgressBarWidget widget={widget} data={data} />;
+      case "metric":
+      case "metriccard":
+        return <MetricCardWidget widget={widget} data={data} />;
+      case "scatter":
+      case "scatterplot":
+        return <ScatterPlotWidget widget={widget} data={data} />;
       default:
         return (
           <Card className="h-full">

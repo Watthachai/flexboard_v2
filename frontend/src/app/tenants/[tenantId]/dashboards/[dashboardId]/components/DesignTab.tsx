@@ -700,11 +700,31 @@ export function DesignTab({
         },
         visible: true,
       },
+      area: {
+        id: widgetId,
+        title: "Area Chart",
+        type: "area",
+        position: { x: 0, y: 4, w: 6, h: 4 },
+        dataConfig: {
+          table: dashboard.selectedTable || "",
+          xField: "",
+          yField: "",
+          aggregation: "sum",
+          limit: 100,
+        },
+        styleConfig: {
+          color: "#8b5cf6",
+          showLegend: true,
+          showGrid: true,
+          showLabels: true,
+        },
+        visible: true,
+      },
       pie: {
         id: widgetId,
         title: "Pie Chart",
         type: "pie",
-        position: { x: 0, y: 4, w: 4, h: 4 },
+        position: { x: 0, y: 8, w: 4, h: 4 },
         dataConfig: {
           table: dashboard.selectedTable || "",
           xField: "",
@@ -718,11 +738,47 @@ export function DesignTab({
         },
         visible: true,
       },
+      doughnut: {
+        id: widgetId,
+        title: "Doughnut Chart",
+        type: "doughnut",
+        position: { x: 4, y: 8, w: 4, h: 4 },
+        dataConfig: {
+          table: dashboard.selectedTable || "",
+          xField: "",
+          yField: "",
+          aggregation: "sum",
+          limit: 10,
+        },
+        styleConfig: {
+          showLegend: true,
+          showLabels: true,
+        },
+        visible: true,
+      },
+      scatter: {
+        id: widgetId,
+        title: "Scatter Plot",
+        type: "scatter",
+        position: { x: 8, y: 8, w: 4, h: 4 },
+        dataConfig: {
+          table: dashboard.selectedTable || "",
+          xField: "",
+          yField: "",
+          limit: 100,
+        },
+        styleConfig: {
+          color: "#f59e0b",
+          showLegend: true,
+          showGrid: true,
+        },
+        visible: true,
+      },
       kpi: {
         id: widgetId,
         title: "KPI Card",
         type: "kpi",
-        position: { x: 4, y: 4, w: 2, h: 2 },
+        position: { x: 6, y: 4, w: 2, h: 2 },
         dataConfig: {
           table: dashboard.selectedTable || "",
           yField: "",
@@ -735,11 +791,63 @@ export function DesignTab({
         },
         visible: true,
       },
+      metric: {
+        id: widgetId,
+        title: "Metric Card",
+        type: "metric",
+        position: { x: 8, y: 4, w: 2, h: 2 },
+        dataConfig: {
+          table: dashboard.selectedTable || "",
+          yField: "",
+          aggregation: "sum",
+          unit: "",
+          decimals: 0,
+          description: "",
+        },
+        styleConfig: {
+          color: "#06b6d4",
+        },
+        visible: true,
+      },
+      progress: {
+        id: widgetId,
+        title: "Progress Bar",
+        type: "progress",
+        position: { x: 10, y: 4, w: 2, h: 2 },
+        dataConfig: {
+          table: dashboard.selectedTable || "",
+          xField: "",
+          yField: "",
+          maxValue: 100,
+          unit: "%",
+        },
+        styleConfig: {
+          color: "#84cc16",
+        },
+        visible: true,
+      },
+      gauge: {
+        id: widgetId,
+        title: "Gauge",
+        type: "gauge",
+        position: { x: 0, y: 12, w: 4, h: 4 },
+        dataConfig: {
+          table: dashboard.selectedTable || "",
+          yField: "",
+          aggregation: "avg",
+          min: 0,
+          max: 100,
+        },
+        styleConfig: {
+          color: "#ef4444",
+        },
+        visible: true,
+      },
       table: {
         id: widgetId,
         title: "Data Table",
         type: "table",
-        position: { x: 0, y: 8, w: 12, h: 6 },
+        position: { x: 4, y: 12, w: 8, h: 6 },
         dataConfig: {
           table: dashboard.selectedTable || "",
           limit: 50,
@@ -1005,21 +1113,49 @@ export function DesignTab({
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-48">
                       <DropdownMenuItem onClick={() => handleAddWidget("bar")}>
-                        <BarChartBig /> Bar Chart
+                        <BarChartBig className="h-4 w-4 mr-2" /> Bar Chart
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleAddWidget("line")}>
                         📈 Line Chart
                       </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleAddWidget("area")}>
+                        📊 Area Chart
+                      </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleAddWidget("pie")}>
                         🥧 Pie Chart
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleAddWidget("kpi")}>
-                        🎯 KPI Card
+                      <DropdownMenuItem
+                        onClick={() => handleAddWidget("doughnut")}
+                      >
+                        🍩 Doughnut Chart
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleAddWidget("scatter")}
+                      >
+                        📈 Scatter Plot
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => handleAddWidget("table")}
                       >
                         📋 Data Table
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleAddWidget("kpi")}>
+                        🎯 KPI Card
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleAddWidget("metric")}
+                      >
+                        💳 Metric Card
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleAddWidget("progress")}
+                      >
+                        📊 Progress Bar
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleAddWidget("gauge")}
+                      >
+                        ⚡ Gauge
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -1336,9 +1472,10 @@ function ConfigDocumentation() {
           <div>
             <code className="bg-blue-100 px-1 rounded font-semibold">type</code>
             <p className="text-gray-600 mt-1">
-              &quot;bar&quot; | &quot;line&quot; | &quot;pie&quot; |
-              &quot;doughnut&quot; | &quot;kpi&quot; | &quot;table&quot; |
-              &quot;gauge&quot;
+              &quot;bar&quot; | &quot;line&quot; | &quot;area&quot; |
+              &quot;pie&quot; | &quot;doughnut&quot; | &quot;scatter&quot; |
+              &quot;kpi&quot; | &quot;metric&quot; | &quot;progress&quot; |
+              &quot;table&quot; | &quot;gauge&quot;
             </p>
           </div>
         </CardContent>
@@ -1476,6 +1613,32 @@ function ConfigDocumentation() {
               Text after value: &quot; units&quot;, &quot;%&quot; (for KPI)
             </p>
           </div>
+          <div>
+            <code className="bg-orange-100 px-1 rounded">unit</code>
+            <p className="text-gray-600 mt-1">
+              Unit for metric/progress: &quot;$&quot;, &quot;%&quot;,
+              &quot;units&quot;
+            </p>
+          </div>
+          <div>
+            <code className="bg-orange-100 px-1 rounded">decimals</code>
+            <p className="text-gray-600 mt-1">
+              Decimal places for metric card (0-5)
+            </p>
+          </div>
+          <div>
+            <code className="bg-orange-100 px-1 rounded">maxValue</code>
+            <p className="text-gray-600 mt-1">
+              Maximum value for progress bar (default: 100)
+            </p>
+          </div>
+          <div>
+            <code className="bg-orange-100 px-1 rounded">min</code> /{" "}
+            <code className="bg-orange-100 px-1 rounded">max</code>
+            <p className="text-gray-600 mt-1">
+              Range for gauge widget (e.g., 0-100)
+            </p>
+          </div>
         </CardContent>
       </Card>
 
@@ -1558,30 +1721,26 @@ LIMIT 10`}
       {/* Complete Example */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm">📋 Complete Example</CardTitle>
+          <CardTitle className="text-sm">📋 Complete Examples</CardTitle>
         </CardHeader>
         <CardContent>
-          <pre className="text-xs bg-gray-50 p-3 rounded overflow-x-auto whitespace-pre-wrap break-all">
-            {`{
+          <div className="space-y-4">
+            <div>
+              <p className="text-xs font-semibold text-gray-700 mb-2">
+                📊 Bar Chart Example:
+              </p>
+              <pre className="text-xs bg-gray-50 p-3 rounded overflow-x-auto whitespace-pre-wrap break-all">
+                {`{
   "id": "widget_1",
-  "title": "Top 10 Products by Sales",
+  "title": "Sales by Region",
   "type": "bar",
-  "position": {
-    "x": 0,
-    "y": 0,
-    "w": 6,
-    "h": 4
-  },
+  "position": { "x": 0, "y": 0, "w": 6, "h": 4 },
   "dataConfig": {
     "table": "sales_data",
-    "xField": "productName",
+    "xField": "region",
     "yField": "totalSales",
     "aggregation": "sum",
-    "groupBy": ["productName"],
-    "orderBy": [{
-      "field": "totalSales",
-      "direction": "DESC"
-    }],
+    "groupBy": ["region"],
     "limit": 10
   },
   "styleConfig": {
@@ -1589,17 +1748,146 @@ LIMIT 10`}
     "showGrid": true,
     "showLegend": true
   },
-  "tooltipConfig": {
-    "enabled": true,
-    "format": "{productName}: ฿{totalSales}"
+  "visible": true
+}`}
+              </pre>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-gray-700 mb-2">
+                💳 Metric Card Example:
+              </p>
+              <pre className="text-xs bg-blue-50 p-3 rounded overflow-x-auto whitespace-pre-wrap break-all">
+                {`{
+  "id": "widget_2",
+  "title": "Monthly Revenue",
+  "type": "metric",
+  "position": { "x": 6, "y": 0, "w": 3, "h": 2 },
+  "dataConfig": {
+    "table": "sales",
+    "yField": "revenue",
+    "aggregation": "sum",
+    "unit": "$",
+    "decimals": 2,
+    "description": "Total revenue this month"
+  },
+  "styleConfig": {
+    "color": "#10b981"
   },
   "visible": true
 }`}
-          </pre>
+              </pre>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-gray-700 mb-2">
+                📊 Progress Bar Example:
+              </p>
+              <pre className="text-xs bg-green-50 p-3 rounded overflow-x-auto whitespace-pre-wrap break-all">
+                {`{
+  "id": "widget_3",
+  "title": "Project Completion",
+  "type": "progress",
+  "position": { "x": 9, "y": 0, "w": 3, "h": 2 },
+  "dataConfig": {
+    "table": "projects",
+    "xField": "projectName",
+    "yField": "completionRate",
+    "maxValue": 100,
+    "unit": "%"
+  },
+  "styleConfig": {
+    "color": "#f59e0b"
+  },
+  "visible": true
+}`}
+              </pre>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-gray-700 mb-2">
+                📈 Scatter Plot Example:
+              </p>
+              <pre className="text-xs bg-purple-50 p-3 rounded overflow-x-auto whitespace-pre-wrap break-all">
+                {`{
+  "id": "widget_4",
+  "title": "Price vs Sales Correlation",
+  "type": "scatter",
+  "position": { "x": 0, "y": 2, "w": 6, "h": 4 },
+  "dataConfig": {
+    "table": "products",
+    "xField": "price",
+    "yField": "unitsSold",
+    "limit": 100
+  },
+  "styleConfig": {
+    "color": "#8b5cf6",
+    "showGrid": true
+  },
+  "visible": true
+}`}
+              </pre>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
       {/* Tips & Troubleshooting */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">
+            🎯 Widget Types Quick Reference
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="text-xs space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <p className="text-gray-700 font-semibold">📊 Chart Widgets:</p>
+              <ul className="text-gray-600 mt-1 space-y-1 text-xs">
+                <li>
+                  • <code>bar</code> - Bar Chart
+                </li>
+                <li>
+                  • <code>line</code> - Line Chart
+                </li>
+                <li>
+                  • <code>area</code> - Area Chart
+                </li>
+                <li>
+                  • <code>pie</code> - Pie Chart
+                </li>
+                <li>
+                  • <code>doughnut</code> - Doughnut Chart
+                </li>
+                <li>
+                  • <code>scatter</code> - Scatter Plot
+                </li>
+              </ul>
+            </div>
+            <div>
+              <p className="text-gray-700 font-semibold">📋 Data Widgets:</p>
+              <ul className="text-gray-600 mt-1 space-y-1 text-xs">
+                <li>
+                  • <code>table</code> - Data Table
+                </li>
+                <li>
+                  • <code>kpi</code> - KPI Card
+                </li>
+                <li>
+                  • <code>metric</code> - Metric Card
+                </li>
+                <li>
+                  • <code>progress</code> - Progress Bar
+                </li>
+                <li>
+                  • <code>gauge</code> - Gauge
+                </li>
+              </ul>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm">💡 Tips & Troubleshooting</CardTitle>
@@ -1637,6 +1925,41 @@ LIMIT 10`}
             <p className="text-gray-600 mt-1">
               Just omit the <code>limit</code> field from{" "}
               <code>dataConfig</code>
+            </p>
+          </div>
+          <div>
+            <p className="text-gray-700 font-semibold">
+              💳 Metric Card vs KPI Card?
+            </p>
+            <p className="text-gray-600 mt-1">
+              Metric Card shows trends, KPI Card is simpler display
+            </p>
+          </div>
+          <div>
+            <p className="text-gray-700 font-semibold">
+              📊 Progress Bar not showing correctly?
+            </p>
+            <p className="text-gray-600 mt-1">
+              Check <code>maxValue</code> setting and ensure <code>yField</code>{" "}
+              contains percentage/ratio
+            </p>
+          </div>
+          <div>
+            <p className="text-gray-700 font-semibold">
+              📈 Scatter Plot needs X and Y fields
+            </p>
+            <p className="text-gray-600 mt-1">
+              Both <code>xField</code> and <code>yField</code> are required for
+              correlation analysis
+            </p>
+          </div>
+          <div>
+            <p className="text-gray-700 font-semibold">
+              ⚡ Gauge Widget range settings
+            </p>
+            <p className="text-gray-600 mt-1">
+              Set <code>min/max</code> in <code>dataConfig</code> to define
+              gauge scale (e.g., 0-100)
             </p>
           </div>
         </CardContent>
