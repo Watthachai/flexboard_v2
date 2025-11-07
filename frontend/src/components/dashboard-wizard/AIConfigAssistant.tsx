@@ -90,6 +90,7 @@ export function AIConfigAssistant({
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState<string>("");
   const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash");
   const [typingMessageIndex, setTypingMessageIndex] = useState<number | null>(
     null
@@ -274,6 +275,9 @@ export function AIConfigAssistant({
     setIsLoading(true);
 
     try {
+      // Set initial thinking status
+      setLoadingStatus("🧠 วิเคราะห์คำขอของคุณ...");
+
       // Check if user wants to generate/modify config or just ask questions
       const inputLower = input.toLowerCase();
 
@@ -343,6 +347,8 @@ export function AIConfigAssistant({
 
       if (shouldGenerateConfig) {
         // Generate/Modify configuration
+        setLoadingStatus("⚙️ สร้าง Dashboard Configuration...");
+
         const result = await generateConfigWithAI(tenantId, {
           prompt: input.trim(),
           model: selectedModel,
@@ -353,6 +359,8 @@ export function AIConfigAssistant({
             selectedTable,
           },
         });
+
+        setLoadingStatus("✨ เตรียมแสดงผล...");
 
         // Use AI's explanation
         const explanation =
@@ -381,12 +389,16 @@ export function AIConfigAssistant({
         });
       } else {
         // General chat
+        setLoadingStatus("💬 ประมวลผลคำถามของคุณ...");
+
         const history = messages
           .filter((m) => !m.config) // Don't include config messages in history
           .map((m) => ({
             role: m.role === "user" ? "user" : "model",
             content: m.content,
           }));
+
+        setLoadingStatus("🤖 ปรึกษากับ AI Engine...");
 
         const result = await chatWithAI(tenantId, {
           message: input.trim(),
@@ -399,6 +411,8 @@ export function AIConfigAssistant({
             selectedTable,
           },
         });
+
+        setLoadingStatus("💡 เตรียมคำตอบ...");
 
         console.log("🔍 Chat result:", result);
         console.log("🔍 Config from backend:", result.config);
@@ -422,6 +436,8 @@ export function AIConfigAssistant({
       console.error("AI Assistant Error:", error);
       toast.error(error.message || "Failed to get response from AI");
 
+      setLoadingStatus("❌ เกิดข้อผิดพลาด...");
+
       const errorMessage: Message = {
         role: "assistant",
         content: `ขออภัยครับ เกิดข้อผิดพลาด: ${
@@ -438,6 +454,7 @@ export function AIConfigAssistant({
       });
     } finally {
       setIsLoading(false);
+      setLoadingStatus("");
     }
   };
 
@@ -459,6 +476,8 @@ export function AIConfigAssistant({
     const userMessage = `นี่คือ columns ที่ผมเห็นในตาราง ${selectedTable}: ${columnsInfo}`;
 
     setInput(userMessage);
+    // Show thinking status immediately
+    setLoadingStatus("📊 กำลังส่งข้อมูล columns ให้ AI...");
     // Auto-send the message after a short delay
     setTimeout(() => {
       handleSend();
@@ -683,7 +702,14 @@ export function AIConfigAssistant({
                         style={{ animationDelay: "0.2s" }}
                       />
                     </div>
-                    <span>กำลังคิด...</span>
+                    <div className="flex flex-col">
+                      <span className="font-medium">
+                        {loadingStatus || "กำลังคิด..."}
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        AI กำลังประมวลผล
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>

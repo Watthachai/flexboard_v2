@@ -65,35 +65,94 @@ export default function WidgetRenderer({
           query = widget.dataConfig.query;
         } else if (widget.dataConfig.table) {
           // Build query from table and fields
-          const { xField, yField, aggregation, groupBy, orderBy, table } =
-            widget.dataConfig;
+          const {
+            xField,
+            yField,
+            field,
+            labelField,
+            valueField,
+            aggregation,
+            groupBy,
+            orderBy,
+            table,
+            filters,
+            having,
+            limit,
+          } = widget.dataConfig;
 
           const selectFields = [];
 
-          // Add xField (grouping field)
-          if (xField) {
-            selectFields.push(xField);
-          }
-
-          // Add yField with aggregation if specified
-          if (yField) {
+          // Handle different field types for different widgets
+          if (labelField && valueField) {
+            // For pie/doughnut charts using labelField and valueField
+            selectFields.push(labelField);
             if (aggregation && groupBy && groupBy.length > 0) {
-              // Use aggregate function when grouping
               selectFields.push(
-                `${aggregation.toUpperCase()}(${yField}) as ${yField}`
+                `${aggregation.toUpperCase()}(${valueField}) as ${valueField}`
               );
             } else {
-              selectFields.push(yField);
+              selectFields.push(valueField);
+            }
+          } else if (field) {
+            // For KPI/metric widgets using single field
+            if (aggregation) {
+              selectFields.push(
+                `${aggregation.toUpperCase()}(${field}) as ${field}`
+              );
+            } else {
+              selectFields.push(field);
+            }
+          } else {
+            // Standard xField/yField approach
+            if (xField) {
+              selectFields.push(xField);
+            }
+            if (yField) {
+              if (aggregation && groupBy && groupBy.length > 0) {
+                selectFields.push(
+                  `${aggregation.toUpperCase()}(${yField}) as ${yField}`
+                );
+              } else {
+                selectFields.push(yField);
+              }
             }
           }
 
           const selectClause =
             selectFields.length > 0 ? selectFields.join(", ") : "*";
-          query = `SELECT ${selectClause} FROM ${table}`;
+
+          // For SQL Server, use TOP instead of LIMIT/OFFSET
+          const topClause = limit ? `TOP ${limit} ` : "";
+          query = `SELECT ${topClause}${selectClause} FROM ${table}`;
+
+          // Add WHERE clause for filters
+          if (filters && filters.length > 0) {
+            const whereConditions = filters.map((filter: any) => {
+              if (filter.operator === "IN") {
+                const values = Array.isArray(filter.value)
+                  ? filter.value.map((v: any) => `'${v}'`).join(",")
+                  : `'${filter.value}'`;
+                return `${filter.field} IN (${values})`;
+              } else if (filter.operator === "LIKE") {
+                return `${filter.field} LIKE '%${filter.value}%'`;
+              } else {
+                return `${filter.field} ${filter.operator} '${filter.value}'`;
+              }
+            });
+            query += ` WHERE ${whereConditions.join(" AND ")}`;
+          }
 
           // Add GROUP BY if specified
           if (groupBy && groupBy.length > 0) {
             query += ` GROUP BY ${groupBy.join(", ")}`;
+          }
+
+          // Add HAVING clause for post-aggregation filters
+          if (having && groupBy && groupBy.length > 0) {
+            const havingCondition = `${aggregation?.toUpperCase() || "SUM"}(${
+              having.field || yField || valueField
+            }) ${having.operator} ${having.value}`;
+            query += ` HAVING ${havingCondition}`;
           }
 
           // Add ORDER BY if specified
@@ -102,7 +161,28 @@ export default function WidgetRenderer({
               (order: any) => `${order.field} ${order.direction || "ASC"}`
             );
             query += ` ORDER BY ${orderClauses.join(", ")}`;
+          } else if (limit) {
+            // Add a default ORDER BY when LIMIT is used without explicit ORDER BY
+            // This is required for SQL Server OFFSET/FETCH
+            let defaultOrderField = "1"; // Fallback to constant
+
+            if (selectFields.length > 0) {
+              // Use the first field in SELECT clause
+              const firstField = selectFields[0];
+              // Remove any alias (e.g., "SUM(field) as field" -> "field")
+              defaultOrderField = firstField.includes(" as ")
+                ? firstField.split(" as ")[1]
+                : firstField.split("(")[0]; // Remove function like SUM(
+            } else if (xField) {
+              defaultOrderField = xField;
+            } else if (yField) {
+              defaultOrderField = yField;
+            }
+
+            query += ` ORDER BY ${defaultOrderField}`;
           }
+
+          // Note: Using TOP for SQL Server compatibility instead of LIMIT/OFFSET
         } else {
           setLoading(false);
           setError("No query or table specified in dataConfig");
