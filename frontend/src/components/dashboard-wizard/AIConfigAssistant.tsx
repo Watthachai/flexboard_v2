@@ -22,6 +22,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   config?: any;
+  suggestions?: string[];
   timestamp: Date;
   isTyping?: boolean;
 }
@@ -30,6 +31,8 @@ interface AIConfigAssistantProps {
   tenantId: string;
   currentConfig?: any;
   tableSchema?: any;
+  dataSource?: any;
+  selectedTable?: string;
   onShowDiff?: (
     originalConfig: any,
     modifiedConfig: any,
@@ -41,16 +44,44 @@ export function AIConfigAssistant({
   tenantId,
   currentConfig,
   tableSchema,
+  dataSource,
+  selectedTable,
   onShowDiff,
 }: AIConfigAssistantProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
       content: currentConfig?.widgets?.length
-        ? `👋 สวัสดีครับ! ผมเห็นว่าคุณมี ${currentConfig.widgets.length} widget อยู่ใน dashboard แล้ว ผมสามารถช่วยเพิ่ม แก้ไข หรือจัดเรียงใหม่ได้ครับ คุณต้องการทำอะไรครับ?\n\n(I can also respond in English if you prefer!)`
-        : "👋 สวัสดีครับ! ผมเป็น AI agent ที่จะช่วยสร้าง dashboard ให้คุณ สามารถสร้าง charts, KPIs และตั้งค่าต่างๆ ได้เลย บอกมาเลยว่าอยากจะทำอะไรครับ!\n\n(I can also respond in English if you prefer!)",
+        ? `👋 สวัสดีครับ! ผมเห็นว่าคุณมี ${
+            currentConfig.widgets.length
+          } widget อยู่ใน dashboard แล้ว${
+            selectedTable ? ` และเชื่อมต่อกับตาราง "${selectedTable}"` : ""
+          } ผมสามารถช่วยเพิ่ม แก้ไข หรือจัดเรียงใหม่ได้ครับ${
+            dataSource && selectedTable
+              ? " รวมถึงเสนอแนะ widget ที่เหมาะสมกับข้อมูลของคุณ"
+              : ""
+          } คุณต้องการทำอะไรครับ?\n\n(I can also respond in English if you prefer!)`
+        : `👋 สวัสดีครับ! ผมเป็น AI agent ที่จะช่วยสร้าง dashboard ให้คุณ${
+            selectedTable ? ` จากตาราง "${selectedTable}"` : ""
+          } สามารถสร้าง charts, KPIs และตั้งค่าต่างๆ ได้เลย${
+            dataSource && selectedTable
+              ? " ผมจะวิเคราะห์ข้อมูลจริงเพื่อแนะนำ visualization ที่เหมาะสม"
+              : ""
+          } บอกมาเลยว่าอยากจะทำอะไรครับ!\n\n(I can also respond in English if you prefer!)`,
       timestamp: new Date(),
       isTyping: true,
+      suggestions:
+        dataSource && selectedTable
+          ? [
+              "แสดงข้อมูลแบบ KPI สำคัญๆ",
+              "สร้างกราฟแท่งเปรียบเทียบ",
+              "แสดงข้อมูลในตาราง",
+            ]
+          : [
+              "สร้าง dashboard ใหม่",
+              "เพิ่ม chart ใหม่",
+              "แสดงข้อมูลในรูปแบบ KPI",
+            ],
     },
   ]);
   const [input, setInput] = useState("");
@@ -314,6 +345,8 @@ export function AIConfigAssistant({
           context: {
             tableSchema,
             currentConfig,
+            dataSource,
+            selectedTable,
           },
         });
 
@@ -332,6 +365,7 @@ export function AIConfigAssistant({
           role: "assistant",
           content: explanation,
           config: result.config,
+          suggestions: result.suggestions || [],
           timestamp: new Date(),
           isTyping: true,
         };
@@ -354,7 +388,12 @@ export function AIConfigAssistant({
           message: input.trim(),
           model: selectedModel,
           history,
-          context: { currentConfig, tableSchema },
+          context: {
+            currentConfig,
+            tableSchema,
+            dataSource,
+            selectedTable,
+          },
         });
 
         console.log("🔍 Chat result:", result);
@@ -363,7 +402,8 @@ export function AIConfigAssistant({
         const assistantMessage: Message = {
           role: "assistant",
           content: result.response,
-          config: result.config, // ← เพิ่มตรงนี้! ถ้ามี config จาก backend
+          config: result.config,
+          suggestions: result.suggestions || [],
           timestamp: new Date(),
           isTyping: true,
         };
@@ -550,6 +590,29 @@ export function AIConfigAssistant({
                       </p>
                     </div>
                   )}
+
+                  {/* Show suggestions if available */}
+                  {message.suggestions &&
+                    message.suggestions.length > 0 &&
+                    !message.isTyping && (
+                      <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                        <p className="font-semibold text-green-900 mb-2 flex items-center gap-2">
+                          <Lightbulb className="h-4 w-4" />
+                          คำแนะนำถัดไป / Next Suggestions
+                        </p>
+                        <div className="space-y-1">
+                          {message.suggestions.map((suggestion, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => setInput(suggestion)}
+                              className="block w-full text-left text-xs text-green-700 hover:text-green-900 hover:bg-green-100 p-2 rounded border border-green-200 hover:border-green-300 transition-colors"
+                            >
+                              💡 {suggestion}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                   <div className="text-xs opacity-70 mt-1">
                     {message.timestamp.toLocaleTimeString()}

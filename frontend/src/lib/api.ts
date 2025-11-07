@@ -666,14 +666,18 @@ export async function generateConfigWithAI(
       tableSchema?: any;
       currentConfig?: any;
       widgetType?: string;
+      dataSource?: any;
+      selectedTable?: string;
     };
   }
 ): Promise<{
   success: boolean;
   config: any;
   explanation?: string;
+  suggestions?: string[];
   prompt: string;
   model: string;
+  sampleDataUsed?: boolean;
 }> {
   return fetcher(`/api/tenants/${tenantId}/ai-assistant/generate-config`, {
     method: "POST",
@@ -690,13 +694,20 @@ export async function chatWithAI(
     message: string;
     model?: string;
     history?: Array<{ role: string; content: string }>;
-    context?: any;
+    context?: {
+      tableSchema?: any;
+      currentConfig?: any;
+      dataSource?: any;
+      selectedTable?: string;
+    };
   }
 ): Promise<{
   success: boolean;
   response: string;
-  config?: any; // ← เพิ่มตรงนี้! optional เพราะอาจจะไม่มี
+  config?: any;
+  suggestions?: string[];
   model: string;
+  sampleDataUsed?: boolean;
 }> {
   return fetcher(`/api/tenants/${tenantId}/ai-assistant/chat`, {
     method: "POST",

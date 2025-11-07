@@ -583,12 +583,34 @@ export function DesignTab({
       `📊 Line counts - Original: ${originalLineCount}, Modified: ${modifiedLineCount}`
     );
 
-    if (originalLineCount < 10 || modifiedLineCount < 10) {
-      console.error("❌ Config too short! Something went wrong:");
+    // Check if configs are valid JSON objects instead of just line count
+    const isValidOriginal =
+      fullOriginalConfig &&
+      typeof fullOriginalConfig === "object" &&
+      fullOriginalConfig.hasOwnProperty("layout") &&
+      Array.isArray(fullOriginalConfig.widgets);
+
+    const isValidModified =
+      fullModifiedConfig &&
+      typeof fullModifiedConfig === "object" &&
+      fullModifiedConfig.hasOwnProperty("layout") &&
+      Array.isArray(fullModifiedConfig.widgets);
+
+    if (!isValidOriginal || !isValidModified) {
+      console.error("❌ Invalid config structure! Something went wrong:");
       console.log("Original config:", fullOriginalConfig);
       console.log("Modified config:", fullModifiedConfig);
-      toast.error("Configuration seems incomplete. Please try again.");
+      console.log("Original valid:", isValidOriginal);
+      console.log("Modified valid:", isValidModified);
+      toast.error("Configuration structure is invalid. Please try again.");
       return;
+    }
+
+    // For very short configs (like new empty configs), ensure minimum meaningful diff
+    if (originalLineCount < 5 && modifiedLineCount < 5) {
+      console.log(
+        "⚠️ Both configs are very short, but valid. Proceeding with diff..."
+      );
     }
 
     setDiffOriginalConfig(originalJson);
@@ -1146,6 +1168,8 @@ export function DesignTab({
                     tableName: dashboard.selectedTable,
                     columns: columns,
                   }}
+                  dataSource={(dashboard as any)?.dataSource}
+                  selectedTable={dashboard?.selectedTable}
                   onShowDiff={handleShowDiff}
                 />
               </TabsContent>

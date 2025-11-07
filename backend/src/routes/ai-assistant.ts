@@ -1,7 +1,124 @@
 import express from "express";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { executeQuery } from "../utils/database-connectors";
 
 const router = express.Router();
+
+// Function to get sample data from database
+async function getSampleData(
+  dataSource: any,
+  tableName: string,
+  limit: number = 5
+) {
+  try {
+    if (!dataSource || !dataSource.type || !dataSource.connection) {
+      return {
+        success: false,
+        error: "Invalid data source configuration",
+      };
+    }
+
+    const query = `SELECT * FROM ${tableName} LIMIT ${limit}`;
+    const result = await executeQuery(
+      dataSource.type,
+      dataSource.connection,
+      query
+    );
+    return {
+      success: true,
+      data: result.data || [],
+      columns: result.columns || [],
+    };
+  } catch (error) {
+    console.error(`❌ Error fetching sample data from ${tableName}:`, error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+// Function to check if prompt is dashboard-related
+function isDashboardRelated(prompt: string): boolean {
+  const dashboardKeywords = [
+    // English keywords
+    "dashboard",
+    "chart",
+    "graph",
+    "widget",
+    "visualization",
+    "data",
+    "kpi",
+    "metric",
+    "table",
+    "bar",
+    "line",
+    "pie",
+    "gauge",
+    "filter",
+    "analytics",
+    "report",
+    "display",
+    "show",
+    "create",
+    "add",
+    "remove",
+    "modify",
+    "update",
+
+    // Thai keywords
+    "แดชบอร์ด",
+    "แผนภูมิ",
+    "กราф",
+    "วิดเจ็ต",
+    "ข้อมูล",
+    "ตาราง",
+    "แสดง",
+    "สร้าง",
+    "เพิ่ม",
+    "ลบ",
+    "แก้ไข",
+    "เปลี่ยน",
+    "อัปเดต",
+    "รายงาน",
+  ];
+
+  const lowerPrompt = prompt.toLowerCase();
+  return dashboardKeywords.some((keyword) =>
+    lowerPrompt.includes(keyword.toLowerCase())
+  );
+}
+
+// Generate next step suggestions
+function generateSuggestions(
+  currentConfig: any,
+  explanation: string
+): string[] {
+  const suggestions = [];
+  const widgetCount = currentConfig?.widgets?.length || 0;
+
+  if (widgetCount === 0) {
+    suggestions.push("เพิ่ม KPI widget เพื่อแสดงตัวเลขสำคัญ");
+    suggestions.push("Add a bar chart to compare categories");
+    suggestions.push("สร้างตารางเพื่อแสดงข้อมูลรายละเอียด");
+  } else if (widgetCount < 3) {
+    suggestions.push("เพิ่ม line chart เพื่อแสดงแนวโน้ม");
+    suggestions.push("Add filters to make dashboard interactive");
+    suggestions.push("สร้าง pie chart เพื่อแสดงสัดส่วน");
+  } else {
+    suggestions.push("ปรับสีและรูปแบบของ widgets");
+    suggestions.push("Add more detailed tooltips");
+    suggestions.push("เพิ่ม gauge สำหรับแสดงเป้าหมาย");
+  }
+
+  // Add data-specific suggestions
+  if (explanation.includes("sales") || explanation.includes("ยอดขาย")) {
+    suggestions.push("แสดงยอดขายตามช่วงเวลา");
+    suggestions.push("Compare sales by region or product");
+  }
+
+  return suggestions.slice(0, 3); // Return max 3 suggestions
+}
 
 // Initialize Gemini AI - use lazy initialization
 let genAI: GoogleGenerativeAI | null = null;
@@ -44,14 +161,54 @@ router.post(
         return res.status(400).json({ error: "Prompt is required" });
       }
 
+      // Check if prompt is dashboard-related
+      if (!isDashboardRelated(prompt)) {
+        return res.json({
+          explanation:
+            "ฉันเป็น AI ที่เชี่ยวชาญเฉพาะด้านการสร้างและจัดการ Dashboard เท่านั้น กรุณาถามคำถามที่เกี่ยวข้องกับ Dashboard, Chart, Widget, หรือการแสดงผลข้อมูลครับ",
+          config: null,
+          suggestions: [
+            "สร้าง dashboard ใหม่",
+            "เพิ่ม chart ใหม่",
+            "แสดงข้อมูลในรูปแบบ KPI",
+          ],
+        });
+      }
+
+      // Get datasource schema and sample data if provided
+      const {
+        tableSchema,
+        currentConfig,
+        widgetType,
+        dataSource,
+        selectedTable,
+      } = context || {};
+
+      // Try to get sample data if we have data source and table
+      let sampleData = null;
+      if (dataSource && selectedTable) {
+        console.log(
+          `🔍 [AI Assistant] Fetching sample data from ${selectedTable}...`
+        );
+        sampleData = await getSampleData(dataSource, selectedTable, 3);
+        if (sampleData.success && sampleData.data) {
+          console.log(
+            `✅ [AI Assistant] Got ${sampleData.data.length} sample records`
+          );
+        } else {
+          console.log(
+            `❌ [AI Assistant] Failed to get sample data: ${
+              sampleData.error || "Unknown error"
+            }`
+          );
+        }
+      }
+
       // Get Gemini client (will initialize if needed)
       const geminiClient = getGeminiClient();
 
       // Default to gemini-2.5-flash (recommended) if not specified
       const selectedModel = model || "gemini-2.5-flash";
-
-      // Get datasource schema if provided
-      const { tableSchema, currentConfig, widgetType } = context || {};
 
       // Build system prompt with context
       const systemPrompt = `You are an intelligent dashboard configuration agent. You work incrementally with users to build and refine dashboards.
@@ -75,7 +232,7 @@ WORKING MODE:
 - Always explain what you're keeping, changing, or adding
 
 RESPONSE FORMAT (for config generation):
-You must return a JSON object with TWO parts:
+You must return a JSON object with THREE parts:
 {
   "explanation": "Brief explanation of what you're doing in the same language as user's request (e.g., 'I'm keeping your existing 2 KPI widgets and adding a new bar chart to show sales by product.' or 'ผมจะเก็บ KPI widget 2 อันที่มีอยู่ และเพิ่ม bar chart ใหม่เพื่อแสดงยอดขายตามสินค้า')",
   "config": {
@@ -84,7 +241,12 @@ You must return a JSON object with TWO parts:
     "gridCols": 12,
     "gridRowHeight": 100,
     "widgets": [...]
-  }
+  },
+  "suggestions": [
+    "คำแนะนำการปรับปรุงหรือเพิ่มเติมถัดไป",
+    "Next improvement or addition suggestion",
+    "อีกหนึ่งข้อเสนอแนะ"
+  ]
 }
 
 AGENT COMMANDS YOU UNDERSTAND (English & Thai):
@@ -158,6 +320,21 @@ ${
 }
 
 ${
+  sampleData &&
+  sampleData.success &&
+  sampleData.data &&
+  sampleData.data.length > 0
+    ? `\nSAMPLE DATA FROM TABLE "${selectedTable}" (${
+        sampleData.data.length
+      } records):\n${JSON.stringify(
+        sampleData.data,
+        null,
+        2
+      )}\n\nUse this sample data to understand the actual data structure and suggest appropriate visualizations.`
+    : ""
+}
+
+${
   currentConfig
     ? `\nCURRENT DASHBOARD CONFIG (analyze this):\n${JSON.stringify(
         currentConfig,
@@ -210,6 +387,12 @@ IMPORTANT: Return ONLY a JSON object with "explanation" and "config" fields. No 
       const explanation =
         parsedResponse.explanation || "Configuration generated successfully.";
       let generatedConfig = parsedResponse.config || parsedResponse;
+      let suggestions = parsedResponse.suggestions || [];
+
+      // Generate suggestions if not provided by AI
+      if (!suggestions || suggestions.length === 0) {
+        suggestions = generateSuggestions(generatedConfig, explanation);
+      }
 
       // Validate and enhance the config
       if (generatedConfig.widgets) {
@@ -233,8 +416,10 @@ IMPORTANT: Return ONLY a JSON object with "explanation" and "config" fields. No 
         success: true,
         config: generatedConfig,
         explanation,
+        suggestions,
         prompt,
         model: selectedModel,
+        sampleDataUsed: sampleData?.success || false,
       });
     } catch (error: any) {
       console.error("AI Assistant Error:", error);
@@ -258,13 +443,33 @@ router.post("/tenants/:tenantId/ai-assistant/chat", async (req, res) => {
       return res.status(400).json({ error: "Message is required" });
     }
 
+    // Check if message is dashboard-related
+    if (!isDashboardRelated(message)) {
+      return res.json({
+        response:
+          "ฉันเป็น AI ที่เชี่ยวชาญเฉพาะด้านการสร้างและจัดการ Dashboard เท่านั้น กรุณาถามคำถามที่เกี่ยวข้องกับ Dashboard, Chart, Widget, หรือการแสดงผลข้อมูลครับ",
+        suggestions: [
+          "สร้าง dashboard ใหม่",
+          "เพิ่ม chart ใหม่",
+          "แสดงข้อมูลในรูปแบบ KPI",
+        ],
+      });
+    }
+
     // Get Gemini client (will initialize if needed)
     const geminiClient = getGeminiClient();
 
     // Default to gemini-2.5-flash (recommended) if not specified
     const selectedModel = model || "gemini-2.5-flash";
 
-    const { currentConfig, tableSchema } = context || {};
+    const { currentConfig, tableSchema, dataSource, selectedTable } =
+      context || {};
+
+    // Try to get sample data if available
+    let sampleData = null;
+    if (dataSource && selectedTable) {
+      sampleData = await getSampleData(dataSource, selectedTable, 3);
+    }
 
     const systemPrompt = `You are an intelligent dashboard configuration agent with memory of the current state.
 
@@ -337,7 +542,22 @@ ${
 
 ${
   tableSchema
-    ? `\nAVAILABLE DATA:\n${JSON.stringify(tableSchema, null, 2)}`
+    ? `\nAVAILABLE DATABASE SCHEMA:\n${JSON.stringify(tableSchema, null, 2)}`
+    : ""
+}
+
+${
+  sampleData &&
+  sampleData.success &&
+  sampleData.data &&
+  sampleData.data.length > 0
+    ? `\nSAMPLE DATA FROM TABLE "${selectedTable}" (${
+        sampleData.data.length
+      } records):\n${JSON.stringify(
+        sampleData.data,
+        null,
+        2
+      )}\n\nUse this sample data to provide better suggestions based on actual data.`
     : ""
 }
 
@@ -451,11 +671,19 @@ Be concise, friendly, and actionable. Provide specific examples when helpful. Al
       }
     }
 
+    // Generate suggestions based on response
+    const suggestions = generateSuggestions(
+      extractedConfig || currentConfig,
+      text
+    );
+
     res.json({
       success: true,
       response: text,
       config: extractedConfig, // Include config if found
+      suggestions,
       model: selectedModel,
+      sampleDataUsed: sampleData?.success || false,
     });
   } catch (error: any) {
     console.error("Chat Error:", error);
