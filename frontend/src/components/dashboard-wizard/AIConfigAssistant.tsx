@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sparkles, Send, Loader2, Lightbulb, Settings } from "lucide-react";
@@ -57,25 +57,29 @@ export function AIConfigAssistant({
           } widget อยู่ใน dashboard แล้ว${
             selectedTable ? ` และเชื่อมต่อกับตาราง "${selectedTable}"` : ""
           } ผมสามารถช่วยเพิ่ม แก้ไข หรือจัดเรียงใหม่ได้ครับ${
-            dataSource && selectedTable
+            dataSource && selectedTable && tableSchema
               ? " รวมถึงเสนอแนะ widget ที่เหมาะสมกับข้อมูลของคุณ"
               : ""
           } คุณต้องการทำอะไรครับ?\n\n(I can also respond in English if you prefer!)`
+        : !tableSchema
+        ? `👋 สวัสดีครับ! ผมเป็น AI agent ที่จะช่วยสร้าง dashboard ให้คุณ\n\n**แต่ก่อนอื่น ผมขอดูข้อมูลในตารางของคุณก่อนนะครับ** เพื่อจะได้แนะนำ widget ที่เหมาะสมให้คุณ\n\n🔍 **ขั้นตอน:**\n1. ไปที่แท็บ **"Columns"** ด้านขวามือ\n2. ดูว่ามี field อะไรบ้างในตาราง\n3. กลับมาคุยกับผมใหม่ แล้วบอกว่าเห็น columns อะไรบ้าง\n\nหรือถ้าเห็น columns แล้ว สามารถบอกผมได้เลยครับ ว่ามี field อะไรบ้าง แล้วผมจะแนะนำ dashboard ที่เหมาะสมให้!\n\n(I can also respond in English if you prefer!)`
         : `👋 สวัสดีครับ! ผมเป็น AI agent ที่จะช่วยสร้าง dashboard ให้คุณ${
             selectedTable ? ` จากตาราง "${selectedTable}"` : ""
-          } สามารถสร้าง charts, KPIs และตั้งค่าต่างๆ ได้เลย${
-            dataSource && selectedTable
-              ? " ผมจะวิเคราะห์ข้อมูลจริงเพื่อแนะนำ visualization ที่เหมาะสม"
-              : ""
-          } บอกมาเลยว่าอยากจะทำอะไรครับ!\n\n(I can also respond in English if you prefer!)`,
+          }\n\n🎯 **จากข้อมูลที่เห็น** มี columns ที่น่าสนใจมากครับ! ผมสามารถช่วยสร้าง charts, KPIs และตั้งค่าต่างๆ ได้เลย พร้อมวิเคราะห์ข้อมูลจริงเพื่อแนะนำ visualization ที่เหมาะสม\n\nบอกมาเลยว่าอยากจะทำอะไรครับ! เช่น:\n- แสดงตัวเลขสำคัญเป็น KPI\n- เปรียบเทียบข้อมูลด้วย chart\n- แสดงแนวโน้มตามเวลา\n\n(I can also respond in English if you prefer!)`,
       timestamp: new Date(),
       isTyping: true,
       suggestions:
-        dataSource && selectedTable
+        dataSource && selectedTable && tableSchema
           ? [
-              "แสดงข้อมูลแบบ KPI สำคัญๆ",
-              "สร้างกราฟแท่งเปรียบเทียบ",
-              "แสดงข้อมูลในตาราง",
+              "สร้าง KPI แสดงตัวเลขสำคัญ",
+              "สร้างกราฟแท่งเปรียบเทียบข้อมูล",
+              "แสดงแนวโน้มตามเวลา",
+            ]
+          : !tableSchema
+          ? [
+              "ไปดู Available Columns ใน Columns tab",
+              "บอกผมว่าเห็น field อะไรบ้างในตาราง",
+              "ถามเกี่ยวกับ widget types ที่มี",
             ]
           : [
               "สร้าง dashboard ใหม่",
@@ -441,6 +445,26 @@ export function AIConfigAssistant({
     setInput(suggestion);
   };
 
+  // Function to automatically show columns to AI
+  const handleShowColumnsToAI = () => {
+    if (!tableSchema?.columns || tableSchema.columns.length === 0) {
+      toast.error("ไม่พบข้อมูล columns กรุณาเลือกตารางก่อน");
+      return;
+    }
+
+    const columnsInfo = tableSchema.columns
+      .map((col: any) => `${col.name} (${col.type})`)
+      .join(", ");
+
+    const userMessage = `นี่คือ columns ที่ผมเห็นในตาราง ${selectedTable}: ${columnsInfo}`;
+
+    setInput(userMessage);
+    // Auto-send the message after a short delay
+    setTimeout(() => {
+      handleSend();
+    }, 500);
+  };
+
   return (
     <Card className="h-full flex flex-col">
       <CardHeader className="border-b">
@@ -604,12 +628,35 @@ export function AIConfigAssistant({
                           {message.suggestions.map((suggestion, idx) => (
                             <button
                               key={idx}
-                              onClick={() => setInput(suggestion)}
+                              onClick={() => {
+                                // Special handling for column suggestion
+                                if (
+                                  suggestion.includes("Available Columns") &&
+                                  tableSchema?.columns
+                                ) {
+                                  handleShowColumnsToAI();
+                                } else {
+                                  setInput(suggestion);
+                                }
+                              }}
                               className="block w-full text-left text-xs text-green-700 hover:text-green-900 hover:bg-green-100 p-2 rounded border border-green-200 hover:border-green-300 transition-colors"
                             >
                               💡 {suggestion}
                             </button>
                           ))}
+
+                          {/* Show columns button if no table schema and it's the first conversation */}
+                          {!tableSchema &&
+                            tableSchema?.columns?.length === 0 &&
+                            messages.length <= 2 && (
+                              <button
+                                onClick={handleShowColumnsToAI}
+                                className="block w-full text-left text-xs bg-blue-100 text-blue-700 hover:text-blue-900 hover:bg-blue-200 p-2 rounded border border-blue-200 hover:border-blue-300 transition-colors font-medium"
+                              >
+                                🔍 แสดง Columns ให้ AI ดู (Auto-send columns
+                                info)
+                              </button>
+                            )}
                         </div>
                       </div>
                     )}
@@ -669,24 +716,29 @@ export function AIConfigAssistant({
 
         {/* Input Area */}
         <div className="border-t p-4">
-          <div className="flex gap-2">
-            <Input
+          <div className="flex gap-2 items-end">
+            <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   handleSend();
+                } else if (e.key === "Enter" && e.shiftKey) {
+                  // Allow Shift+Enter for new line
+                  return;
                 }
               }}
-              placeholder="บอกมาเลยว่าอยากสร้างอะไร... (Thai or English)"
+              placeholder="บอกมาเลยว่าอยากสร้างอะไร... (Thai or English)&#10;กด Shift+Enter เพื่อขึ้นบรรทัดใหม่"
               disabled={isLoading}
-              className="flex-1"
+              className="flex-1 resize-none min-h-[60px] max-h-[120px]"
+              rows={2}
             />
             <Button
               onClick={handleSend}
               disabled={!input.trim() || isLoading}
               size="icon"
+              className="mb-0"
             >
               {isLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

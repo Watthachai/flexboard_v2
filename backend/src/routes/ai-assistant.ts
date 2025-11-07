@@ -65,11 +65,17 @@ function isDashboardRelated(prompt: string): boolean {
     "remove",
     "modify",
     "update",
+    "column",
+    "field",
+    "xfield",
+    "yfield",
+    "config",
+    "configuration",
 
     // Thai keywords
     "แดชบอร์ด",
     "แผนภูมิ",
-    "กราф",
+    "กราฟ",
     "วิดเจ็ต",
     "ข้อมูล",
     "ตาราง",
@@ -81,6 +87,12 @@ function isDashboardRelated(prompt: string): boolean {
     "เปลี่ยน",
     "อัปเดต",
     "รายงาน",
+    "คอลัมน์",
+    "ฟิลด์",
+    "เติม",
+    "ใส่",
+    "config",
+    "คอนฟิก",
   ];
 
   const lowerPrompt = prompt.toLowerCase();
@@ -89,32 +101,82 @@ function isDashboardRelated(prompt: string): boolean {
   );
 }
 
-// Generate next step suggestions
+// Generate next step suggestions based on context and user language
 function generateSuggestions(
   currentConfig: any,
-  explanation: string
+  explanation: string,
+  hasTableSchema: boolean = false,
+  userLanguage: "th" | "en" = "th"
 ): string[] {
   const suggestions = [];
   const widgetCount = currentConfig?.widgets?.length || 0;
 
-  if (widgetCount === 0) {
-    suggestions.push("เพิ่ม KPI widget เพื่อแสดงตัวเลขสำคัญ");
-    suggestions.push("Add a bar chart to compare categories");
-    suggestions.push("สร้างตารางเพื่อแสดงข้อมูลรายละเอียด");
-  } else if (widgetCount < 3) {
-    suggestions.push("เพิ่ม line chart เพื่อแสดงแนวโน้ม");
-    suggestions.push("Add filters to make dashboard interactive");
-    suggestions.push("สร้าง pie chart เพื่อแสดงสัดส่วน");
-  } else {
-    suggestions.push("ปรับสีและรูปแบบของ widgets");
-    suggestions.push("Add more detailed tooltips");
-    suggestions.push("เพิ่ม gauge สำหรับแสดงเป้าหมาย");
+  // If no table schema, suggest getting column info first
+  if (!hasTableSchema) {
+    if (userLanguage === "th") {
+      suggestions.push("ไปดู Available Columns ใน Columns tab ก่อน");
+      suggestions.push("บอกผมว่าเห็น field อะไรบ้างในตาราง");
+      suggestions.push("ถามเกี่ยวกับ widget types ที่มี");
+    } else {
+      suggestions.push("Check Available Columns in Columns tab first");
+      suggestions.push("Tell me what fields you see in the table");
+      suggestions.push("Ask about available widget types");
+    }
+    return suggestions;
   }
 
-  // Add data-specific suggestions
+  // Generate suggestions based on widget count and content
+  if (widgetCount === 0) {
+    if (userLanguage === "th") {
+      suggestions.push("เพิ่ม KPI widget เพื่อแสดงตัวเลขสำคัญ");
+      suggestions.push("สร้าง bar chart เปรียบเทียบข้อมูล");
+      suggestions.push("เพิ่ม table widget เพื่อแสดงรายละเอียด");
+    } else {
+      suggestions.push("Add KPI widget to display key metrics");
+      suggestions.push("Create bar chart to compare data");
+      suggestions.push("Add table widget for detailed data");
+    }
+  } else if (widgetCount < 3) {
+    if (userLanguage === "th") {
+      suggestions.push("เพิ่ม line chart เพื่อแสดงแนวโน้มตามเวลา");
+      suggestions.push("สร้าง pie chart เพื่อแสดงสัดส่วน");
+      suggestions.push("เพิ่ม progress bar หรือ gauge");
+    } else {
+      suggestions.push("Add line chart to show trends over time");
+      suggestions.push("Create pie chart to show proportions");
+      suggestions.push("Add progress bar or gauge widget");
+    }
+  } else {
+    if (userLanguage === "th") {
+      suggestions.push("ปรับสีและรูปแบบของ widgets");
+      suggestions.push("เพิ่ม filter หรือ interactive features");
+      suggestions.push("สร้าง metric card แสดง trends");
+    } else {
+      suggestions.push("Customize colors and styling of widgets");
+      suggestions.push("Add filters or interactive features");
+      suggestions.push("Create metric cards with trends");
+    }
+  }
+
+  // Add data-specific suggestions based on explanation content
   if (explanation.includes("sales") || explanation.includes("ยอดขาย")) {
-    suggestions.push("แสดงยอดขายตามช่วงเวลา");
-    suggestions.push("Compare sales by region or product");
+    if (userLanguage === "th") {
+      suggestions.push("แสดงยอดขายตามช่วงเวลา");
+      suggestions.push("เปรียบเทียบยอดขายตามผลิตภัณฑ์");
+    } else {
+      suggestions.push("Show sales over time periods");
+      suggestions.push("Compare sales by products");
+    }
+  }
+
+  if (explanation.includes("product") || explanation.includes("สินค้า")) {
+    if (userLanguage === "th") {
+      suggestions.push("วิเคราะห์สินค้าขายดี top 10");
+      suggestions.push("แสดงสต็อกสินค้าด้วย gauge");
+    } else {
+      suggestions.push("Analyze top 10 best-selling products");
+      suggestions.push("Show product inventory with gauge");
+    }
   }
 
   return suggestions.slice(0, 3); // Return max 3 suggestions
@@ -184,6 +246,26 @@ router.post(
         selectedTable,
       } = context || {};
 
+      // If no table schema is provided and user wants to create dashboard, ask to see columns first
+      if (
+        !tableSchema &&
+        !currentConfig &&
+        (prompt.includes("สร้าง") ||
+          prompt.includes("create") ||
+          prompt.includes("dashboard"))
+      ) {
+        return res.json({
+          explanation:
+            "ผมขอดูข้อมูลในตารางของคุณก่อนนะครับ เพื่อจะได้แนะนำ widget ที่เหมาะสมให้คุณครับ\n\nขั้นตอน:\n1. ไปที่ Columns tab ด้านขวา\n2. ดู Available Columns ที่มี\n3. กลับมาคุยกับผมใหม่ แล้วบอกว่าเห็น columns อะไรบ้าง\n\nหรือถ้าเห็น columns แล้ว สามารถบอกผมได้เลยว่ามี field อะไรบ้าง แล้วผมจะแนะนำ dashboard ที่เหมาะสมให้ครับ",
+          config: null,
+          suggestions: [
+            "ดู Available Columns ใน Columns tab",
+            "บอกผมว่าเห็น field อะไรบ้างในตาราง",
+            "ถามเกี่ยวกับ widget types ที่มี",
+          ],
+        });
+      }
+
       // Try to get sample data if we have data source and table
       let sampleData = null;
       if (dataSource && selectedTable) {
@@ -211,13 +293,44 @@ router.post(
       const selectedModel = model || "gemini-2.5-flash";
 
       // Build system prompt with context
-      const systemPrompt = `You are an intelligent dashboard configuration agent. You work incrementally with users to build and refine dashboards.
+      const systemPrompt = `You are an intelligent dashboard configuration agent with conversational capabilities. You work incrementally with users to build and refine dashboards through natural conversation.
+
+CONVERSATION FLOW STRATEGY:
+1. If this is the first interaction and no columns are provided: ASK TO SEE COLUMNS FIRST
+2. If columns are provided: ANALYZE and SUGGEST appropriate visualizations
+3. In follow-up messages: BUILD on previous suggestions and refine based on user feedback
 
 LANGUAGE SUPPORT:
 - You can understand and respond in both English and Thai (ภาษาไทย)
 - If user asks in Thai, respond in Thai
 - If user asks in English, respond in English
 - Your explanations should match the user's language
+
+CONVERSATION STARTER MODE:
+If no table schema or current config is provided, respond in this conversational format:
+{
+  "explanation": "ผมขอดูข้อมูลในตารางของคุณก่อนนะครับ ว่ามี column อะไรบ้าง เพื่อจะได้แนะนำ widget ที่เหมาะสมให้คุณครับ กรุณาเลือกตารางและดูข้อมูลใน Columns tab ก่อนนะครับ",
+  "config": null,
+  "suggestions": [
+    "เลือกตารางและดู Available Columns",
+    "กลับมาคุยกับผมใหม่หลังจากเห็น columns แล้ว",
+    "ถามเกี่ยวกับ widget types ที่มี"
+  ]
+}
+
+COLUMN ANALYSIS MODE:
+When you have table schema, provide detailed analysis:
+{
+  "explanation": "จากข้อมูลที่เห็น มี columns ที่น่าสนใจมากครับ! เช่น dataDate สำหรับแกนเวลา, qtyFromThisDoc และ totalFromBuyPrice สำหรับแสดงยอดและจำนวน, prodName และ prodGrp สำหรับจัดกลุ่มสินค้า แนะนำให้เริ่มจาก KPI card แสดงยอดรวม + Bar chart เปรียบเทียบสินค้า + Line chart แสดงแนวโน้มตามวันที่ครับ",
+  "config": {
+    // Generated based on available columns
+  },
+  "suggestions": [
+    "เพิ่ม Time series chart ด้วย dataDate",
+    "สร้าง Product comparison ด้วย prodName", 
+    "แสดง Age analysis ด้วย ageBucket"
+  ]
+}
 
 YOUR ROLE AS AN AGENT:
 1. ANALYZE the current dashboard configuration (if provided)
@@ -270,7 +383,7 @@ WIDGET CONFIG STRUCTURE:
 {
   "id": "widget_X",
   "title": "Widget Title",
-  "type": "bar|line|pie|kpi|table|gauge",
+  "type": "bar|line|area|pie|doughnut|scatter|kpi|metric|progress|table|gauge",
   "position": { "x": 0, "y": 0, "w": 6, "h": 4 },
   "dataConfig": {
     "table": "table_name",
@@ -297,20 +410,26 @@ WIDGET CONFIG STRUCTURE:
   "visible": true
 }
 
-WIDGET TYPES:
+WIDGET TYPES (All 11 supported):
 - bar: Bar chart for comparing categories
-- line: Line chart for trends over time  
+- line: Line chart for trends over time
+- area: Area chart for trend visualization with fill
 - pie: Pie chart for part-to-whole relationships (limit 5-8 slices)
+- doughnut: Doughnut chart (same as pie with center hole)
+- scatter: Scatter plot for correlation analysis (needs both xField and yField)
 - kpi: Single key metric with prefix/suffix
+- metric: Advanced metric card with trend indication
+- progress: Progress bar for completion rates
 - table: Detailed tabular data
-- gauge: Progress/capacity metrics
+- gauge: Progress/capacity metrics with dial visualization
 
 CRITICAL RULES:
-1. ALWAYS use "pie" instead of "donut" or "doughnut"
+1. Support ALL 11 widget types: bar, line, area, pie, doughnut, scatter, kpi, metric, progress, table, gauge
 2. orderBy MUST be array format: [{ "field": "column", "direction": "ASC|DESC" }]
 3. ALWAYS include "groupBy" when using aggregation with xField
 4. For KPI widgets, use "yField" for the value field (not "valueField")
 5. Include tooltipConfig for better user experience
+6. For scatter plots, REQUIRE both xField and yField
 
 SMART POSITIONING:
 - When adding widgets to existing config, calculate positions to avoid overlap
@@ -320,6 +439,13 @@ SMART POSITIONING:
 AGGREGATION + GROUP BY:
 - ALWAYS use "aggregation" when using "groupBy"
 - Example: {"yField": "totalSales", "aggregation": "sum", "groupBy": ["productName"]}
+
+CONVERSATIONAL EXAMPLES:
+User: "สร้าง dashboard ให้หน่อย"
+AI: "ผมขอดูข้อมูลในตารางของคุณก่อนนะครับ ว่ามี column อะไรบ้าง เพื่อจะได้แนะนำ widget ที่เหมาะสมให้คุณครับ"
+
+User (after seeing columns): "มี dataDate, corp, prodName, qtyFromThisDoc อะไรแบบนี้"
+AI: "เยี่ยมเลยครับ! จากข้อมูลที่เห็น แนะนำให้เริ่มด้วย 1) KPI card แสดงยอดรวม qtyFromThisDoc 2) Bar chart เปรียบเทียบ quantity ตาม prodName 3) Line chart แสดงแนวโน้ม quantity ตาม dataDate เป็นอย่างไรครับ?"
 
 ${
   tableSchema
@@ -397,9 +523,17 @@ IMPORTANT: Return ONLY a JSON object with "explanation" and "config" fields. No 
       let generatedConfig = parsedResponse.config || parsedResponse;
       let suggestions = parsedResponse.suggestions || [];
 
+      // Detect user language from prompt
+      const userLanguage = /[ก-๙]/.test(prompt) ? "th" : "en";
+
       // Generate suggestions if not provided by AI
       if (!suggestions || suggestions.length === 0) {
-        suggestions = generateSuggestions(generatedConfig, explanation);
+        suggestions = generateSuggestions(
+          generatedConfig,
+          explanation,
+          !!tableSchema,
+          userLanguage
+        );
       }
 
       // Validate and enhance the config
