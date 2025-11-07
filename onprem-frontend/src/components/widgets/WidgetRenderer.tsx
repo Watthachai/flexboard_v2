@@ -220,5 +220,5 @@ export default function WidgetRenderer({
     }
   };
 
-  return renderWidget();
+  return <div className="h-full w-full">{renderWidget()}</div>;
 }

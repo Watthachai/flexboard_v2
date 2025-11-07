@@ -36,12 +36,12 @@ export default function GaugeWidget({ widget, data }: GaugeWidgetProps) {
   }
 
   return (
-    <Card className="h-full">
+    <Card className="h-full flex flex-col">
       <CardHeader>
         <CardTitle>{title || "Gauge"}</CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
+      <CardContent className="flex-1 flex flex-col">
+        <div className="space-y-4 flex-1">
           <div className="relative pt-1">
             <div className="flex mb-2 items-center justify-between">
               <div>

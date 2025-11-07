@@ -147,9 +147,11 @@ export default function DashboardPage() {
               .map((widget: any) => (
                 <div
                   key={widget.id}
+                  className="min-h-[400px]"
                   style={{
                     gridColumn: `span ${widget.position.w} / span ${widget.position.w}`,
                     gridRow: `span ${widget.position.h} / span ${widget.position.h}`,
+                    minHeight: `${(widget.position.h || 4) * 100}px`,
                   }}
                 >
                   <WidgetRenderer

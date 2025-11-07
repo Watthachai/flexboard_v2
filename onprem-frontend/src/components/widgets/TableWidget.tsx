@@ -20,12 +20,12 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
   const { columns, data: rows } = data;
 
   return (
-    <Card className="h-full overflow-hidden">
+    <Card className="h-full overflow-hidden flex flex-col">
       <CardHeader>
         <CardTitle>{title || "Data Table"}</CardTitle>
       </CardHeader>
-      <CardContent className="p-0">
-        <div className="overflow-auto max-h-96">
+      <CardContent className="p-0 flex-1 flex flex-col">
+        <div className="overflow-auto flex-1">
           <Table>
             <TableHeader>
               <TableRow>

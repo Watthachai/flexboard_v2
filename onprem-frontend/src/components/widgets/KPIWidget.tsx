@@ -43,7 +43,7 @@ export default function KPIWidget({ widget, data }: KPIWidgetProps) {
   const suffix = styleConfig?.suffix || "";
 
   return (
-    <Card className={`h-full ${bgColor}`}>
+    <Card className={`h-full flex flex-col ${bgColor}`}>
       <CardHeader>
         <CardTitle className="text-sm font-medium text-gray-600">
           {title || "KPI"}
