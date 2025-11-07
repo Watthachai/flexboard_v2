@@ -14,6 +14,9 @@ import {
   Plus,
   ChevronDown,
   ExternalLink,
+  BarChartBig,
+  Check,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -45,6 +48,22 @@ const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
     </div>
   ),
 });
+
+// Import DiffEditor for showing differences
+const DiffEditor = dynamic(
+  () =>
+    import("@monaco-editor/react").then((module) => ({
+      default: module.DiffEditor,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="w-full h-full flex items-center justify-center text-gray-500">
+        Loading diff editor...
+      </div>
+    ),
+  }
+);
 
 interface Dashboard {
   id: string;
@@ -137,6 +156,12 @@ export function DesignTab({
   // Table preview states
   const [previewData, setPreviewData] = useState<TablePreviewData | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
+
+  // Diff mode states
+  const [isDiffMode, setIsDiffMode] = useState(false);
+  const [diffOriginalConfig, setDiffOriginalConfig] = useState<string>("");
+  const [diffModifiedConfig, setDiffModifiedConfig] = useState<string>("");
+  const [diffExplanation, setDiffExplanation] = useState<string>("");
 
   // Default template
   const defaultConfig: DashboardConfig = {
@@ -437,6 +462,150 @@ export function DesignTab({
     toast.success("Configuration copied to clipboard!");
   };
 
+  // Handle showing diff from AI
+  const handleShowDiff = (
+    originalConfig: any,
+    modifiedConfig: any,
+    explanation?: string
+  ) => {
+    console.log("🔄 Showing diff:", {
+      originalConfig,
+      modifiedConfig,
+      explanation,
+    });
+
+    // ALWAYS use current editor content as the original (full config)
+    let fullOriginalConfig;
+    try {
+      fullOriginalConfig = JSON.parse(configText);
+      console.log("✅ Using current editor config as original");
+    } catch {
+      // Fallback to default config if current text is invalid
+      fullOriginalConfig = defaultConfig;
+      console.log(
+        "⚠️ Using default config as original (editor content invalid)"
+      );
+    }
+
+    // ALWAYS create full modified config by merging AI suggestions
+    const fullModifiedConfig = { ...fullOriginalConfig }; // Start with full current config
+
+    // If AI sent partial config (widgets only)
+    if (modifiedConfig.widgets && Array.isArray(modifiedConfig.widgets)) {
+      console.log("🔧 Merging AI widgets into full config");
+
+      // Clone current widgets array
+      const currentWidgets = [...(fullOriginalConfig.widgets || [])];
+
+      // For each AI widget, find and replace matching widget or add new one
+      modifiedConfig.widgets.forEach((aiWidget: any) => {
+        const existingIndex = currentWidgets.findIndex(
+          (w) => w.id === aiWidget.id
+        );
+
+        if (existingIndex >= 0) {
+          // Replace existing widget
+          console.log(`🔄 Replacing widget ${aiWidget.id}`);
+          currentWidgets[existingIndex] = aiWidget;
+        } else {
+          // Add new widget
+          console.log(`➕ Adding new widget ${aiWidget.id}`);
+          currentWidgets.push(aiWidget);
+        }
+      });
+
+      fullModifiedConfig.widgets = currentWidgets;
+      console.log(
+        `📊 Widget merge result: ${currentWidgets.length} total widgets`
+      );
+    }
+
+    // If AI sent other properties, merge them too
+    if (modifiedConfig.layout)
+      fullModifiedConfig.layout = modifiedConfig.layout;
+    if (modifiedConfig.theme) fullModifiedConfig.theme = modifiedConfig.theme;
+    if (modifiedConfig.gridCols)
+      fullModifiedConfig.gridCols = modifiedConfig.gridCols;
+    if (modifiedConfig.gridRowHeight)
+      fullModifiedConfig.gridRowHeight = modifiedConfig.gridRowHeight;
+    if (modifiedConfig.autoRefresh !== undefined)
+      fullModifiedConfig.autoRefresh = modifiedConfig.autoRefresh;
+    if (modifiedConfig.refreshInterval !== undefined)
+      fullModifiedConfig.refreshInterval = modifiedConfig.refreshInterval;
+
+    console.log("📄 Full configs for diff:", {
+      originalLines: JSON.stringify(fullOriginalConfig, null, 2).split("\n")
+        .length,
+      modifiedLines: JSON.stringify(fullModifiedConfig, null, 2).split("\n")
+        .length,
+      originalKeys: Object.keys(fullOriginalConfig),
+      modifiedKeys: Object.keys(fullModifiedConfig),
+      originalWidgets: fullOriginalConfig.widgets?.length || 0,
+      modifiedWidgets: fullModifiedConfig.widgets?.length || 0,
+    });
+
+    const originalJson = JSON.stringify(fullOriginalConfig, null, 2);
+    const modifiedJson = JSON.stringify(fullModifiedConfig, null, 2);
+
+    // Verify we have substantial content
+    const originalLineCount = originalJson.split("\n").length;
+    const modifiedLineCount = modifiedJson.split("\n").length;
+
+    console.log(
+      `📊 Line counts - Original: ${originalLineCount}, Modified: ${modifiedLineCount}`
+    );
+
+    if (originalLineCount < 10 || modifiedLineCount < 10) {
+      console.error("❌ Config too short! Something went wrong:");
+      console.log("Original config:", fullOriginalConfig);
+      console.log("Modified config:", fullModifiedConfig);
+      toast.error("Configuration seems incomplete. Please try again.");
+      return;
+    }
+
+    setDiffOriginalConfig(originalJson);
+    setDiffModifiedConfig(modifiedJson);
+    setDiffExplanation(explanation || "AI suggested changes");
+    setIsDiffMode(true);
+
+    toast.info(
+      `Diff ready! Original: ${originalLineCount} lines, Modified: ${modifiedLineCount} lines`
+    );
+  };
+
+  // Apply diff changes
+  const handleApplyDiff = () => {
+    try {
+      // Validate JSON before applying
+      JSON.parse(diffModifiedConfig);
+      setConfigText(diffModifiedConfig);
+      setHasDraftChanges(true);
+      setIsDiffMode(false);
+      // Add small delay to allow Monaco to cleanup properly
+      setTimeout(() => {
+        setDiffOriginalConfig("");
+        setDiffModifiedConfig("");
+        setDiffExplanation("");
+      }, 100);
+      toast.success("AI suggestions applied to editor!");
+    } catch (error) {
+      console.error("Invalid JSON in diff config:", error);
+      toast.error("Invalid configuration format");
+    }
+  };
+
+  // Reject diff changes
+  const handleRejectDiff = () => {
+    setIsDiffMode(false);
+    // Add small delay to allow Monaco to cleanup properly
+    setTimeout(() => {
+      setDiffOriginalConfig("");
+      setDiffModifiedConfig("");
+      setDiffExplanation("");
+    }, 100);
+    toast.info("AI suggestions rejected");
+  };
+
   const generateWidgetTemplate = (type: string) => {
     const widgetId = `widget_${Date.now()}`;
 
@@ -624,6 +793,14 @@ export function DesignTab({
                 Viewing v{selectedVersion} (Not Active)
               </Badge>
             )}
+            {diffModifiedConfig && !isDiffMode && (
+              <Badge
+                variant="secondary"
+                className="bg-purple-100 text-purple-800"
+              >
+                AI Diff Ready
+              </Badge>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -690,6 +867,19 @@ export function DesignTab({
               Reset
             </Button>
 
+            {/* Show Diff Button */}
+            {diffModifiedConfig && !isDiffMode && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsDiffMode(true)}
+                className="border-purple-200 text-purple-700 hover:bg-purple-50"
+              >
+                <Sparkles className="h-4 w-4 mr-2" />
+                View AI Diff
+              </Button>
+            )}
+
             {/* Show different buttons based on state */}
             {hasDraftChanges ? (
               // When there are draft changes (whether viewing different version or not)
@@ -747,69 +937,154 @@ export function DesignTab({
             <Card className="flex-1 flex flex-col min-h-0">
               <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-base">
-                  Configuration Editor
+                  {isDiffMode
+                    ? "Configuration Diff - AI Suggestions"
+                    : "Configuration Editor"}
                 </CardTitle>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm">
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Widget
-                      <ChevronDown className="h-4 w-4 ml-2" />
+                <div className="flex items-center gap-2">
+                  {isDiffMode && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setIsDiffMode(false);
+                        // Add small delay to allow Monaco to cleanup properly
+                        setTimeout(() => {
+                          setDiffOriginalConfig("");
+                          setDiffModifiedConfig("");
+                          setDiffExplanation("");
+                        }, 100);
+                      }}
+                    >
+                      Exit Diff
                     </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48">
-                    <DropdownMenuItem onClick={() => handleAddWidget("bar")}>
-                      📊 Bar Chart
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleAddWidget("line")}>
-                      📈 Line Chart
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleAddWidget("pie")}>
-                      🥧 Pie Chart
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleAddWidget("kpi")}>
-                      🎯 KPI Card
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleAddWidget("table")}>
-                      📋 Data Table
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                  )}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Widget
+                        <ChevronDown className="h-4 w-4 ml-2" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuItem onClick={() => handleAddWidget("bar")}>
+                        <BarChartBig /> Bar Chart
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleAddWidget("line")}>
+                        📈 Line Chart
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleAddWidget("pie")}>
+                        🥧 Pie Chart
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleAddWidget("kpi")}>
+                        🎯 KPI Card
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleAddWidget("table")}
+                      >
+                        📋 Data Table
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </CardHeader>
-              <CardContent className="flex-1 p-0 min-h-0 overflow-hidden">
-                <MonacoEditor
-                  height="100%"
-                  language="json"
-                  value={configText}
-                  onChange={(value) => handleConfigChange(value || "")}
-                  theme="vs-dark"
-                  options={{
-                    minimap: { enabled: true },
-                    fontSize: 14,
-                    lineNumbers: "on",
-                    scrollBeyondLastLine: false,
-                    automaticLayout: true,
-                    tabSize: 2,
-                    formatOnPaste: true,
-                    formatOnType: true,
-                    quickSuggestions: true,
-                    suggest: {
-                      showWords: true,
-                      showSnippets: true,
-                    },
-                    folding: true,
-                    bracketPairColorization: {
-                      enabled: true,
-                    },
-                    fontFamily:
-                      "'Fira Code', 'Cascadia Code', 'Consolas', 'Monaco', monospace",
-                    fontLigatures: true,
-                    cursorBlinking: "smooth",
-                    cursorSmoothCaretAnimation: "on",
-                    smoothScrolling: true,
-                    padding: { top: 16, bottom: 16 },
-                  }}
-                />
+              <CardContent className="flex-1 p-0 min-h-0 overflow-hidden flex flex-col">
+                {/* Editor Area */}
+                <div className="flex-1">
+                  {isDiffMode ? (
+                    <DiffEditor
+                      key={`diff-${diffOriginalConfig.length}-${diffModifiedConfig.length}`}
+                      height="100%"
+                      language="json"
+                      original={diffOriginalConfig}
+                      modified={diffModifiedConfig}
+                      theme="vs-dark"
+                      options={{
+                        readOnly: true,
+                        renderSideBySide: true,
+                        minimap: { enabled: false },
+                        fontSize: 13,
+                        lineNumbers: "on",
+                        scrollBeyondLastLine: false,
+                        automaticLayout: true,
+                        folding: true,
+                        diffWordWrap: "on",
+                        renderOverviewRuler: true,
+                        ignoreTrimWhitespace: true,
+                        renderIndicators: true,
+                        enableSplitViewResizing: true,
+                        fontFamily:
+                          "'Fira Code', 'Cascadia Code', 'Consolas', 'Monaco', monospace",
+                        fontLigatures: true,
+                        padding: { top: 16, bottom: 16 },
+                      }}
+                    />
+                  ) : (
+                    <MonacoEditor
+                      height="100%"
+                      language="json"
+                      value={configText}
+                      onChange={(value) => handleConfigChange(value || "")}
+                      theme="vs-dark"
+                      options={{
+                        minimap: { enabled: true },
+                        fontSize: 14,
+                        lineNumbers: "on",
+                        scrollBeyondLastLine: false,
+                        automaticLayout: true,
+                        tabSize: 2,
+                        formatOnPaste: true,
+                        formatOnType: true,
+                        quickSuggestions: true,
+                        suggest: {
+                          showWords: true,
+                          showSnippets: true,
+                        },
+                        folding: true,
+                        bracketPairColorization: {
+                          enabled: true,
+                        },
+                        fontFamily:
+                          "'Fira Code', 'Cascadia Code', 'Consolas', 'Monaco', monospace",
+                        fontLigatures: true,
+                        cursorBlinking: "smooth",
+                        cursorSmoothCaretAnimation: "on",
+                        smoothScrolling: true,
+                        padding: { top: 16, bottom: 16 },
+                      }}
+                    />
+                  )}
+                </div>
+
+                {/* Diff Action Buttons */}
+                {isDiffMode && (
+                  <div className="border-t bg-gray-900 p-4 flex items-center justify-between">
+                    <div className="text-sm text-gray-300">
+                      <span className="font-semibold">AI Suggestion:</span>{" "}
+                      {diffExplanation}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleRejectDiff}
+                        className="border-gray-600 text-gray-300 hover:bg-gray-800"
+                      >
+                        <X className="h-4 w-4 mr-2" />
+                        Reject
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={handleApplyDiff}
+                        className="bg-green-600 hover:bg-green-700 text-white"
+                      >
+                        <Check className="h-4 w-4 mr-2" />
+                        Apply Changes
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -857,12 +1132,7 @@ export function DesignTab({
                     tableName: dashboard.selectedTable,
                     columns: columns,
                   }}
-                  onApplyConfig={(config) => {
-                    const newConfigText = JSON.stringify(config, null, 2);
-                    setConfigText(newConfigText);
-                    setHasDraftChanges(true);
-                    toast.success("AI configuration applied to editor!");
-                  }}
+                  onShowDiff={handleShowDiff}
                 />
               </TabsContent>
 

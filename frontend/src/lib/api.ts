@@ -695,6 +695,7 @@ export async function chatWithAI(
 ): Promise<{
   success: boolean;
   response: string;
+  config?: any; // ← เพิ่มตรงนี้! optional เพราะอาจจะไม่มี
   model: string;
 }> {
   return fetcher(`/api/tenants/${tenantId}/ai-assistant/chat`, {

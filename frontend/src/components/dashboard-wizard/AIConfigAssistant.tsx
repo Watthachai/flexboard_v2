@@ -6,17 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Sparkles,
-  Send,
-  Loader2,
-  Copy,
-  Check,
-  Lightbulb,
-  Settings,
-  Undo2,
-  FileJson,
-} from "lucide-react";
+import { Sparkles, Send, Loader2, Lightbulb, Settings } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -40,14 +30,18 @@ interface AIConfigAssistantProps {
   tenantId: string;
   currentConfig?: any;
   tableSchema?: any;
-  onApplyConfig?: (config: any) => void;
+  onShowDiff?: (
+    originalConfig: any,
+    modifiedConfig: any,
+    explanation?: string
+  ) => void;
 }
 
 export function AIConfigAssistant({
   tenantId,
   currentConfig,
   tableSchema,
-  onApplyConfig,
+  onShowDiff,
 }: AIConfigAssistantProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -61,7 +55,6 @@ export function AIConfigAssistant({
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash");
   const [typingMessageIndex, setTypingMessageIndex] = useState<number | null>(
     null
@@ -103,9 +96,37 @@ export function AIConfigAssistant({
 
             // Mark message as no longer typing
             setMessages((prev) =>
-              prev.map((msg, idx) =>
-                idx === typingMessageIndex ? { ...msg, isTyping: false } : msg
-              )
+              prev.map((msg, idx) => {
+                if (idx === typingMessageIndex) {
+                  const updatedMsg = { ...msg, isTyping: false };
+
+                  // Schedule diff view update for next tick to avoid setState during render
+                  if (updatedMsg.config && currentConfig && onShowDiff) {
+                    console.log("🔄 Scheduling onShowDiff with:", {
+                      currentConfig,
+                      newConfig: updatedMsg.config,
+                      currentConfigType: typeof currentConfig,
+                      newConfigType: typeof updatedMsg.config,
+                      hasLayout: !!updatedMsg.config.layout,
+                      hasTheme: !!updatedMsg.config.theme,
+                      hasWidgets: !!updatedMsg.config.widgets,
+                      widgetCount: updatedMsg.config.widgets?.length || 0,
+                      explanation: updatedMsg.content.slice(0, 100) + "...",
+                    });
+
+                    // Use setTimeout to defer the state update
+                    setTimeout(() => {
+                      onShowDiff(
+                        currentConfig,
+                        updatedMsg.config,
+                        updatedMsg.content.slice(0, 100) + "..."
+                      );
+                    }, 0);
+                  }
+                  return updatedMsg;
+                }
+                return msg;
+              })
             );
           }
         }); // Typing speed (10ms per character = very fast!)
@@ -117,7 +138,7 @@ export function AIConfigAssistant({
         };
       }
     }
-  }, [typingMessageIndex, messages]);
+  }, [typingMessageIndex, messages, currentConfig, onShowDiff]);
 
   // Available Gemini models (updated June 2025)
   const models = [
@@ -218,21 +239,75 @@ export function AIConfigAssistant({
     setIsLoading(true);
 
     try {
-      // Check if user wants to generate config or just chat
-      const generateKeywords = [
-        "create",
+      // Check if user wants to generate/modify config or just ask questions
+      const inputLower = input.toLowerCase();
+
+      // Config modification keywords (English + Thai)
+      const configModifyKeywords = [
         "add",
-        "make",
+        "create",
         "generate",
+        "make",
         "build",
-        "show",
+        "change",
+        "modify",
+        "update",
+        "edit",
+        "adjust",
+        "remove",
+        "delete",
+        "ลบ",
+        "เพิ่ม",
+        "สร้าง",
+        "แก้",
+        "เปลี่ยน",
+        "ปรับ",
       ];
-      const isGenerateRequest = generateKeywords.some((keyword) =>
-        input.toLowerCase().includes(keyword)
+
+      // Question keywords (English + Thai)
+      const questionKeywords = [
+        "what",
+        "how",
+        "why",
+        "when",
+        "where",
+        "who",
+        "can",
+        "should",
+        "is",
+        "are",
+        "does",
+        "explain",
+        "tell me",
+        "show me",
+        "อะไร",
+        "ยังไง",
+        "ทำไม",
+        "เมื่อไหร่",
+        "ที่ไหน",
+        "สามารถ",
+        "ควร",
+        "เป็น",
+        "คือ",
+        "มี",
+        "อธิบาย",
+        "บอก",
+        "แสดง",
+      ];
+
+      const hasConfigKeyword = configModifyKeywords.some((keyword) =>
+        inputLower.includes(keyword)
       );
 
-      if (isGenerateRequest) {
-        // Generate configuration
+      const hasQuestionKeyword = questionKeywords.some((keyword) =>
+        inputLower.includes(keyword)
+      );
+
+      // If it's a question OR no config modification keywords, treat as chat
+      const shouldGenerateConfig = hasConfigKeyword && !hasQuestionKeyword;
+
+      if (shouldGenerateConfig) {
+        // Generate/Modify configuration
         const result = await generateConfigWithAI(tenantId, {
           prompt: input.trim(),
           model: selectedModel,
@@ -242,21 +317,16 @@ export function AIConfigAssistant({
           },
         });
 
-        // Use AI's explanation or generate summary
+        // Use AI's explanation
         const explanation =
           result.explanation ||
-          `I've generated a configuration based on your request. Here's what I created:\n\n${
+          `ผม ${
+            currentConfig ? "ปรับแต่ง" : "สร้าง"
+          } configuration ตามที่คุณขอแล้วครับ\n\n${
             result.config.widgets
-              ? `📊 ${
-                  result.config.widgets.length
-                } widget(s)\n${result.config.widgets
-                  .map(
-                    (w: any, i: number) =>
-                      `${i + 1}. ${w.title} (${w.type} chart)`
-                  )
-                  .join("\n")}`
-              : "Configuration ready"
-          }\n\nYou can preview the JSON below or apply it directly to your dashboard.`;
+              ? `📊 ${result.config.widgets.length} widget(s)`
+              : "Configuration พร้อมแล้ว"
+          }`;
 
         const assistantMessage: Message = {
           role: "assistant",
@@ -287,9 +357,13 @@ export function AIConfigAssistant({
           context: { currentConfig, tableSchema },
         });
 
+        console.log("🔍 Chat result:", result);
+        console.log("🔍 Config from backend:", result.config);
+
         const assistantMessage: Message = {
           role: "assistant",
           content: result.response,
+          config: result.config, // ← เพิ่มตรงนี้! ถ้ามี config จาก backend
           timestamp: new Date(),
           isTyping: true,
         };
@@ -325,115 +399,6 @@ export function AIConfigAssistant({
 
   const handleSuggestionClick = (suggestion: string) => {
     setInput(suggestion);
-  };
-
-  // Generate JSON with comments showing changes
-  const generateJsonWithComments = (oldConfig: any, newConfig: any) => {
-    if (!oldConfig || !newConfig) return JSON.stringify(newConfig, null, 2);
-
-    const changes = getConfigChanges(oldConfig, newConfig);
-    const lines: string[] = [];
-    const configStr = JSON.stringify(newConfig, null, 2);
-    const configLines = configStr.split("\n");
-
-    configLines.forEach((line, index) => {
-      lines.push(line);
-
-      // Check if this line contains a changed value
-      changes.forEach((change) => {
-        if (change.type === "modified" && change.newValue) {
-          // Check if this line contains the new color value
-          if (line.includes(`"color": "${change.newValue}"`)) {
-            // Add comment after this line
-            const indent = line.match(/^\s*/)?.[0] || "";
-            lines.push(
-              `${indent}// เปลี่ยนจาก ${change.oldValue} เป็น ${change.newValue} แล้ว`
-            );
-          }
-        }
-      });
-    });
-
-    return lines.join("\n");
-  };
-
-  // Calculate config changes for diff view
-  const getConfigChanges = (oldConfig: any, newConfig: any) => {
-    const changes: Array<{
-      type: "added" | "removed" | "modified";
-      path: string;
-      oldValue?: any;
-      newValue?: any;
-      widget?: string;
-    }> = [];
-
-    // Compare widgets
-    const oldWidgets = oldConfig?.widgets || [];
-    const newWidgets = newConfig?.widgets || [];
-
-    newWidgets.forEach((newWidget: any) => {
-      const oldWidget = oldWidgets.find((w: any) => w.id === newWidget.id);
-
-      if (!oldWidget) {
-        // Widget added
-        changes.push({
-          type: "added",
-          path: `widgets.${newWidget.id}`,
-          newValue: newWidget.title,
-          widget: newWidget.title,
-        });
-      } else {
-        // Check for modifications
-        if (
-          JSON.stringify(oldWidget.styleConfig) !==
-          JSON.stringify(newWidget.styleConfig)
-        ) {
-          // Style changed
-          const oldColor = oldWidget.styleConfig?.color;
-          const newColor = newWidget.styleConfig?.color;
-          if (oldColor !== newColor) {
-            changes.push({
-              type: "modified",
-              path: `${newWidget.title}.styleConfig.color`,
-              oldValue: oldColor,
-              newValue: newColor,
-              widget: newWidget.title,
-            });
-          }
-        }
-      }
-    });
-
-    // Check for removed widgets
-    oldWidgets.forEach((oldWidget: any) => {
-      const exists = newWidgets.find((w: any) => w.id === oldWidget.id);
-      if (!exists) {
-        changes.push({
-          type: "removed",
-          path: `widgets.${oldWidget.id}`,
-          oldValue: oldWidget.title,
-          widget: oldWidget.title,
-        });
-      }
-    });
-
-    return changes;
-  };
-
-  const handleCopyConfig = (config: any, index: number) => {
-    navigator.clipboard.writeText(JSON.stringify(config, null, 2));
-    setCopiedIndex(index);
-    toast.success("Configuration copied to clipboard!");
-    setTimeout(() => setCopiedIndex(null), 2000);
-  };
-
-  const handleApplyConfig = (config: any) => {
-    if (onApplyConfig) {
-      onApplyConfig(config);
-      toast.success("Configuration applied to editor!");
-    } else {
-      toast.error("Apply function not available");
-    }
   };
 
   return (
@@ -571,115 +536,18 @@ export function AIConfigAssistant({
                     )}
                   </div>
 
-                  {/* Config Changes (Diff View) - show only after typing is done */}
-                  {message.config && !message.isTyping && currentConfig && (
-                    <div className="mt-3 space-y-2">
-                      {/* Preview with Comments */}
-                      <div className="bg-gray-900 rounded-lg p-4 border border-gray-700 overflow-x-auto">
-                        <div className="flex items-center gap-2 mb-3">
-                          <FileJson className="h-4 w-4 text-blue-400" />
-                          <span className="font-semibold text-sm text-white">
-                            Preview: JSON Config with Changes
-                          </span>
-                        </div>
-                        <pre className="text-xs font-mono text-gray-300 whitespace-pre overflow-x-auto">
-                          {generateJsonWithComments(
-                            currentConfig,
-                            message.config
-                          )}
-                        </pre>
-                      </div>
-
-                      {/* Changes Summary */}
-                      <div className="bg-white rounded-lg p-3 border border-gray-200">
-                        <div className="flex items-center gap-2 mb-2">
-                          <FileJson className="h-4 w-4 text-blue-600" />
-                          <span className="font-semibold text-sm">
-                            การเปลี่ยนแปลง
-                          </span>
-                        </div>
-                        {getConfigChanges(currentConfig, message.config).map(
-                          (change, idx) => (
-                            <div
-                              key={idx}
-                              className={`text-xs py-1.5 px-2 rounded mb-1 ${
-                                change.type === "added"
-                                  ? "bg-green-50 border-l-2 border-green-500"
-                                  : change.type === "removed"
-                                  ? "bg-red-50 border-l-2 border-red-500"
-                                  : "bg-yellow-50 border-l-2 border-yellow-500"
-                              }`}
-                            >
-                              <div className="font-semibold">
-                                {change.widget}
-                              </div>
-                              {change.type === "modified" && (
-                                <div className="flex items-center gap-2 mt-1">
-                                  <span className="text-red-600 line-through">
-                                    {change.oldValue}
-                                  </span>
-                                  <span>→</span>
-                                  <span className="text-green-600 font-semibold">
-                                    {change.newValue}
-                                  </span>
-                                  {change.newValue && (
-                                    <div
-                                      className="w-4 h-4 rounded border border-gray-300"
-                                      style={{
-                                        backgroundColor: change.newValue,
-                                      }}
-                                    />
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          )
-                        )}
-                      </div>
-
-                      {/* Action Buttons */}
-                      <div className="flex gap-2">
-                        {onApplyConfig && (
-                          <>
-                            <Button
-                              size="sm"
-                              onClick={() => handleApplyConfig(message.config)}
-                              className="flex-1 bg-green-600 hover:bg-green-700"
-                            >
-                              <Check className="h-3 w-3 mr-1" />
-                              Apply Changes
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => toast.info("Undo not implemented")}
-                              className="flex-1"
-                            >
-                              <Undo2 className="h-3 w-3 mr-1" />
-                              Undo
-                            </Button>
-                          </>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() =>
-                            handleCopyConfig(message.config, index)
-                          }
-                        >
-                          {copiedIndex === index ? (
-                            <>
-                              <Check className="h-3 w-3 mr-1" />
-                              Copied
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="h-3 w-3 mr-1" />
-                              JSON
-                            </>
-                          )}
-                        </Button>
-                      </div>
+                  {/* Show suggestion badge if config is available */}
+                  {message.config && !message.isTyping && (
+                    <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">
+                      <p className="font-semibold text-blue-900 mb-1 flex items-center gap-2">
+                        <Sparkles className="h-4 w-4" />
+                        AI Configuration Ready
+                      </p>
+                      <p className="text-blue-700 text-xs">
+                        {currentConfig
+                          ? "Check the diff view in the editor to review changes →"
+                          : "This configuration has been generated and can be applied →"}
+                      </p>
                     </div>
                   )}
 
@@ -689,7 +557,6 @@ export function AIConfigAssistant({
                 </div>
               </div>
             ))}
-
             {/* Typing indicator while loading */}
             {isLoading && (
               <div className="flex justify-start">
