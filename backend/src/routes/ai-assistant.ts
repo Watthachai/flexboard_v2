@@ -722,7 +722,7 @@ Here's the updated widget:
 WRONG Example (sending entire config - NEVER DO THIS):
 {
   "layout": "grid",
-  "widgets": [ ... all 8 widgets ... ]  ❌ DON'T DO THIS!
+  "widgets": [ ... all xx widgets ... ]  ❌ DON'T DO THIS!
 }
 
 When to send FULL config vs WIDGET only:
