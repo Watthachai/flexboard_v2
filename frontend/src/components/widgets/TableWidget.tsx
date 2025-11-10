@@ -44,6 +44,7 @@ import {
   X,
   CalendarIcon,
 } from "lucide-react";
+import jsPDF from "jspdf";
 
 interface ColumnFilter {
   column: string;
@@ -461,52 +462,147 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
     document.body.removeChild(a);
   };
 
-  const exportToPDF = () => {
-    // Create HTML content for better Thai font support
-    const htmlContent = `
-      <html>
+  const exportToPDF = async () => {
+    try {
+      // Convert oklch/lab colors to hex for html2canvas compatibility
+      const hexHeaderBackground = headerBackground.startsWith("#")
+        ? headerBackground
+        : "#374151"; // fallback to gray-700
+      const hexHeaderColor = headerColor.startsWith("#")
+        ? headerColor
+        : "#ffffff"; // fallback to white
+
+      // Create a completely isolated iframe to avoid CSS inheritance
+      const iframe = document.createElement("iframe");
+      iframe.style.position = "absolute";
+      iframe.style.left = "-9999px";
+      iframe.style.width = "1200px";
+      iframe.style.height = "2000px";
+      document.body.appendChild(iframe);
+
+      const iframeDoc =
+        iframe.contentDocument || iframe.contentWindow?.document;
+      if (!iframeDoc) throw new Error("Cannot access iframe document");
+
+      // Create table HTML with inline styles only (no CSS variables)
+      const tableHTML = `
+        <!DOCTYPE html>
+        <html>
         <head>
-          <title>${title || "Data Export"}</title>
+          <meta charset="UTF-8">
+          <link rel="preconnect" href="https://fonts.googleapis.com">
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+          <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;600;700&display=swap" rel="stylesheet">
           <style>
-            body { font-family: 'Tahoma', 'Arial Unicode MS', sans-serif; font-size: 12px; }
-            table { border-collapse: collapse; width: 100%; margin: 20px 0; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-            th { background-color: #4285f4; color: white; font-weight: bold; }
-            tr:nth-child(even) { background-color: #f5f5f5; }
-            h1 { color: #333; font-size: 18px; margin-bottom: 20px; }
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { 
+              font-family: 'Noto Sans Thai', 'Tahoma', sans-serif; 
+              background-color: #ffffff;
+              color: #000000;
+              padding: 20px;
+            }
           </style>
         </head>
         <body>
-          <h1>${title || "Data Export"}</h1>
-          <table>
-            <thead>
-              <tr>${columns.map((col) => `<th>${col}</th>`).join("")}</tr>
-            </thead>
-            <tbody>
-              ${sortedData
-                .map(
-                  (row) =>
-                    `<tr>${columns
-                      .map((col) => `<td>${formatCellValue(row[col])}</td>`)
-                      .join("")}</tr>`
-                )
-                .join("")}
-            </tbody>
-          </table>
+          <div style="padding: 20px; background-color: #ffffff;">
+            <h1 style="font-size: 24px; margin-bottom: 20px; font-family: 'Noto Sans Thai', 'Tahoma', sans-serif; color: #000000; font-weight: 700;">
+              ${title || "Data Export"}
+            </h1>
+            <table style="width: 100%; border-collapse: collapse; font-family: 'Noto Sans Thai', 'Tahoma', sans-serif;">
+              <thead>
+                <tr style="background-color: ${hexHeaderBackground};">
+                  ${columns
+                    .map(
+                      (col) =>
+                        `<th style="border: 1px solid #dddddd; padding: 12px; color: ${hexHeaderColor}; font-weight: 700; text-align: left; font-family: 'Noto Sans Thai', 'Tahoma', sans-serif;">${col}</th>`
+                    )
+                    .join("")}
+                </tr>
+              </thead>
+              <tbody>
+                ${sortedData
+                  .map(
+                    (row, index) =>
+                      `<tr style="background-color: ${
+                        index % 2 === 0 ? "#f9f9f9" : "#ffffff"
+                      };">
+                        ${columns
+                          .map(
+                            (col) =>
+                              `<td style="border: 1px solid #dddddd; padding: 10px; text-align: left; color: #000000; font-family: 'Noto Sans Thai', 'Tahoma', sans-serif;">${formatCellValue(
+                                row[col]
+                              )}</td>`
+                          )
+                          .join("")}
+                      </tr>`
+                  )
+                  .join("")}
+              </tbody>
+            </table>
+          </div>
         </body>
-      </html>
-    `;
+        </html>
+      `;
 
-    // Create blob and download as HTML (which can be opened and printed as PDF)
-    const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${title || "data"}.html`;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
+      iframeDoc.open();
+      iframeDoc.write(tableHTML);
+      iframeDoc.close();
+
+      // Wait for fonts to load in iframe
+      await iframeDoc.fonts.ready;
+
+      // Small delay to ensure rendering
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // Use html2canvas to capture the iframe content
+      const { default: html2canvas } = await import("html2canvas");
+      const canvas = await html2canvas(iframeDoc.body, {
+        scale: 1.5, // ลดจาก 2 เป็น 1.5 เพื่อลดขนาดไฟล์
+        useCORS: true,
+        logging: false,
+        backgroundColor: "#ffffff",
+        windowWidth: 1200,
+      });
+
+      // Remove iframe
+      document.body.removeChild(iframe);
+
+      // Calculate PDF dimensions
+      const pageWidth = columns.length > 6 ? 297 : 210; // A4 landscape/portrait
+      const pageHeight = columns.length > 6 ? 210 : 297;
+      const imgWidth = pageWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+
+      const doc = new jsPDF({
+        orientation: columns.length > 6 ? "landscape" : "portrait",
+        unit: "mm",
+        format: "a4",
+        compress: true, // เปิด compression
+      });
+
+      let position = 0;
+      const imgData = canvas.toDataURL("image/jpeg", 0.85); // ใช้ JPEG แทน PNG และ quality 85%
+
+      // Add first page
+      doc.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      // Add additional pages if needed
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        doc.addPage();
+        doc.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      // Save the PDF
+      const cleanTitle = (title || "data").replace(/[^\w\s-]/g, "");
+      doc.save(`${cleanTitle}.pdf`);
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      alert("เกิดข้อผิดพลาดในการสร้าง PDF กรุณาลองใหม่อีกครั้ง");
+    }
   };
 
   // Get conditional formatting styles for a cell
