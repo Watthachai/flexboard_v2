@@ -1,0 +1,113 @@
+{
+  "id": "test-advanced-table",
+  "title": "🧪 Test Advanced Table Widget",
+  "type": "table",
+  "position": {
+    "x": 0,
+    "y": 0,
+    "w": 12,
+    "h": 8
+  },
+  "dataConfig": {
+    "table": "test_data",
+    "columns": [
+      {
+        "field": "id",
+        "title": "ID",
+        "width": 80,
+        "sortable": true,
+        "filterable": true,
+        "align": "center"
+      },
+      {
+        "field": "name",
+        "title": "ชื่อสินค้า",
+        "width": 200,
+        "sortable": true,
+        "filterable": true,
+        "pinned": "left"
+      },
+      {
+        "field": "category",
+        "title": "หมวดหมู่",
+        "width": 120,
+        "sortable": true,
+        "filterable": true
+      },
+      {
+        "field": "price",
+        "title": "ราคา",
+        "width": 100,
+        "sortable": true,
+        "format": "currency",
+        "align": "right"
+      },
+      {
+        "field": "stock",
+        "title": "คงเหลือ",
+        "width": 80,
+        "sortable": true,
+        "format": "number",
+        "align": "right"
+      },
+      {
+        "field": "status",
+        "title": "สถานะ",
+        "width": 100,
+        "sortable": true,
+        "filterable": true,
+        "align": "center"
+      }
+    ],
+    "orderBy": [
+      {
+        "field": "name",
+        "direction": "ASC"
+      }
+    ]
+  },
+  "styleConfig": {
+    "showPagination": true,
+    "pageSize": 10,
+    "pageSizeOptions": [5, 10, 20, 50, 100],
+    "showSearch": true,
+    "showExport": true,
+    "exportFormats": ["csv", "excel", "pdf"],
+    "striped": true,
+    "bordered": true,
+    "hoverable": true,
+    "compact": false,
+    "headerBackground": "#1f2937",
+    "headerColor": "#f9fafb"
+  },
+  "conditionalFormatting": [
+    {
+      "field": "stock",
+      "condition": "value < 10",
+      "style": {
+        "backgroundColor": "#fee2e2",
+        "color": "#dc2626",
+        "fontWeight": "bold"
+      }
+    },
+    {
+      "field": "price",
+      "condition": "value > 1000",
+      "style": {
+        "backgroundColor": "#dcfce7",
+        "color": "#16a34a",
+        "fontWeight": "bold"
+      }
+    },
+    {
+      "field": "status",
+      "condition": "value == 'active'",
+      "style": {
+        "backgroundColor": "#dbeafe",
+        "color": "#2563eb"
+      }
+    }
+  ],
+  "visible": true,
+  "refreshInterval": 60000
+}
