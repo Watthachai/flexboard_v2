@@ -90,8 +90,25 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
   } = widget;
   const { columns, data: rows } = data;
 
+  // Extract style config with defaults
+  const {
+    showPagination = true,
+    pageSize: defaultPageSize = 20,
+    pageSizeOptions = [10, 20, 50, 100],
+    showSearch = true,
+    showExport = true,
+    exportFormats = ["csv", "excel", "pdf"],
+    striped = true,
+    bordered = true,
+    hoverable = true,
+    compact = false,
+    headerBackground = "#374151",
+    headerColor = "#fff",
+  } = styleConfig;
+
   // State for table functionality
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(defaultPageSize);
   const [searchTerm, setSearchTerm] = useState("");
   const [sortConfig, setSortConfig] = useState<{
     key: string;
@@ -127,22 +144,6 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
 
     return String(value);
   };
-
-  // Extract style config with defaults
-  const {
-    showPagination = true,
-    pageSize = 20,
-    pageSizeOptions = [10, 20, 50, 100],
-    showSearch = true,
-    showExport = true,
-    exportFormats = ["csv", "excel", "pdf"],
-    striped = true,
-    bordered = true,
-    hoverable = true,
-    compact = false,
-    headerBackground = "#374151",
-    headerColor = "#fff",
-  } = styleConfig;
 
   // Extract filter config
   const {
@@ -1184,9 +1185,9 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
       </CardHeader>
 
       <CardContent className="p-0 flex-1 flex flex-col">
-        <div className="overflow-auto flex-1">
+        <div className="overflow-auto flex-1 max-h-[400px]">
           <Table>
-            <TableHeader>
+            <TableHeader className="sticky top-0 z-10">
               <TableRow style={{ backgroundColor: headerBackground }}>
                 {columns.map((col, index) => (
                   <TableHead
@@ -1255,7 +1256,8 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
               </span>
               <Select
                 value={pageSize.toString()}
-                onValueChange={() => {
+                onValueChange={(value) => {
+                  setPageSize(Number(value));
                   setCurrentPage(1); // Reset to first page when changing page size
                 }}
               >
