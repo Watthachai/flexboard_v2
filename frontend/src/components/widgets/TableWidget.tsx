@@ -31,6 +31,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import { format, isValid, parseISO } from "date-fns";
 import {
   ChevronLeft,
   ChevronRight,
@@ -43,7 +44,6 @@ import {
   X,
   CalendarIcon,
 } from "lucide-react";
-import { format } from "date-fns";
 
 interface ColumnFilter {
   column: string;
@@ -81,7 +81,12 @@ interface TableWidgetProps {
 }
 
 export default function TableWidget({ widget, data }: TableWidgetProps) {
-  const { title, styleConfig = {}, filterConfig = {} } = widget;
+  const {
+    title,
+    styleConfig = {},
+    filterConfig = {},
+    conditionalFormatting = [],
+  } = widget;
   const { columns, data: rows } = data;
 
   // State for table functionality
@@ -99,6 +104,28 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
   const [configFilters, setConfigFilters] = useState<{ [key: string]: any }>(
     {}
   );
+
+  // Helper function to format cell values (especially dates)
+  const formatCellValue = (value: any): string => {
+    if (value === null || value === undefined) return "-";
+
+    // Check if value looks like an ISO date string
+    if (
+      typeof value === "string" &&
+      value.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
+    ) {
+      try {
+        const date = parseISO(value);
+        if (isValid(date)) {
+          return format(date, "dd/MM/yyyy");
+        }
+      } catch {
+        // If parsing fails, return original value
+      }
+    }
+
+    return String(value);
+  };
 
   // Extract style config with defaults
   const {
@@ -435,15 +462,18 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
   };
 
   const exportToPDF = () => {
-    // Simple HTML export that can be printed/saved as PDF
+    // Create HTML content for better Thai font support
     const htmlContent = `
       <html>
         <head>
           <title>${title || "Data Export"}</title>
           <style>
-            table { border-collapse: collapse; width: 100%; }
+            body { font-family: 'Tahoma', 'Arial Unicode MS', sans-serif; font-size: 12px; }
+            table { border-collapse: collapse; width: 100%; margin: 20px 0; }
             th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-            th { background-color: #f2f2f2; }
+            th { background-color: #4285f4; color: white; font-weight: bold; }
+            tr:nth-child(even) { background-color: #f5f5f5; }
+            h1 { color: #333; font-size: 18px; margin-bottom: 20px; }
           </style>
         </head>
         <body>
@@ -457,7 +487,7 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
                 .map(
                   (row) =>
                     `<tr>${columns
-                      .map((col) => `<td>${row[col] || ""}</td>`)
+                      .map((col) => `<td>${formatCellValue(row[col])}</td>`)
                       .join("")}</tr>`
                 )
                 .join("")}
@@ -467,7 +497,8 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
       </html>
     `;
 
-    const blob = new Blob([htmlContent], { type: "text/html" });
+    // Create blob and download as HTML (which can be opened and printed as PDF)
+    const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -476,6 +507,36 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
     a.click();
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
+  };
+
+  // Get conditional formatting styles for a cell
+  const getConditionalStyle = (field: string, value: any) => {
+    const styles: React.CSSProperties = {};
+
+    conditionalFormatting.forEach((rule: any) => {
+      if (rule.field === field) {
+        try {
+          // Replace 'value' with the actual cell value in the condition
+          const condition = rule.condition.replace(/value/g, String(value));
+
+          // Safely evaluate the condition
+          const isMatch = Function(`"use strict"; return (${condition})`)();
+
+          if (isMatch && rule.style) {
+            Object.assign(styles, rule.style);
+          }
+        } catch (error) {
+          // If condition evaluation fails, skip this rule
+          console.warn(
+            "Invalid conditional formatting condition:",
+            rule.condition,
+            error
+          );
+        }
+      }
+    });
+
+    return styles;
   };
 
   // Update config filter
@@ -844,7 +905,7 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
                   )}
                   {exportFormats.includes("pdf") && (
                     <DropdownMenuItem onClick={exportToPDF}>
-                      Export as HTML
+                      Export as PDF
                     </DropdownMenuItem>
                   )}
                 </DropdownMenuContent>
@@ -998,16 +1059,29 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
                     ${compact ? "text-sm" : ""}
                   `}
                 >
-                  {columns.map((col, colIndex) => (
-                    <TableCell
-                      key={colIndex}
-                      className={compact ? "py-1 px-2" : "py-2 px-4"}
-                    >
-                      {row[col] !== null && row[col] !== undefined
-                        ? String(row[col])
-                        : "-"}
-                    </TableCell>
-                  ))}
+                  {columns.map((col, colIndex) => {
+                    const rawValue = row[col];
+                    const cellValue = formatCellValue(rawValue);
+
+                    const conditionalStyle =
+                      conditionalFormatting?.enabled &&
+                      conditionalFormatting.rules
+                        ? getConditionalStyle(
+                            rawValue,
+                            conditionalFormatting.rules
+                          )
+                        : {};
+
+                    return (
+                      <TableCell
+                        key={colIndex}
+                        className={compact ? "py-1 px-2" : "py-2 px-4"}
+                        style={conditionalStyle}
+                      >
+                        {cellValue}
+                      </TableCell>
+                    );
+                  })}
                 </TableRow>
               ))}
             </TableBody>
