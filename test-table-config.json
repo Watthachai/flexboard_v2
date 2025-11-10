@@ -1,113 +1,214 @@
 {
-  "id": "test-advanced-table",
-  "title": "🧪 Test Advanced Table Widget",
-  "type": "table",
-  "position": {
-    "x": 0,
-    "y": 0,
-    "w": 12,
-    "h": 8
-  },
-  "dataConfig": {
-    "table": "test_data",
-    "columns": [
-      {
-        "field": "id",
-        "title": "ID",
-        "width": 80,
-        "sortable": true,
-        "filterable": true,
-        "align": "center"
-      },
-      {
-        "field": "name",
-        "title": "ชื่อสินค้า",
-        "width": 200,
-        "sortable": true,
-        "filterable": true,
-        "pinned": "left"
-      },
-      {
-        "field": "category",
-        "title": "หมวดหมู่",
-        "width": 120,
-        "sortable": true,
-        "filterable": true
-      },
-      {
-        "field": "price",
-        "title": "ราคา",
-        "width": 100,
-        "sortable": true,
-        "format": "currency",
-        "align": "right"
-      },
-      {
-        "field": "stock",
-        "title": "คงเหลือ",
-        "width": 80,
-        "sortable": true,
-        "format": "number",
-        "align": "right"
-      },
-      {
-        "field": "status",
-        "title": "สถานะ",
-        "width": 100,
-        "sortable": true,
-        "filterable": true,
-        "align": "center"
-      }
-    ],
-    "orderBy": [
-      {
-        "field": "name",
-        "direction": "ASC"
-      }
-    ]
-  },
-  "styleConfig": {
-    "showPagination": true,
-    "pageSize": 10,
-    "pageSizeOptions": [5, 10, 20, 50, 100],
-    "showSearch": true,
-    "showExport": true,
-    "exportFormats": ["csv", "excel", "pdf"],
-    "striped": true,
-    "bordered": true,
-    "hoverable": true,
-    "compact": false,
-    "headerBackground": "#1f2937",
-    "headerColor": "#f9fafb"
-  },
-  "conditionalFormatting": [
+  "layout": "grid",
+  "theme": "light",
+  "gridCols": 12,
+  "gridRowHeight": 100,
+  "widgets": [
     {
-      "field": "stock",
-      "condition": "value < 10",
-      "style": {
-        "backgroundColor": "#fee2e2",
-        "color": "#dc2626",
-        "fontWeight": "bold"
-      }
-    },
-    {
-      "field": "price",
-      "condition": "value > 1000",
-      "style": {
-        "backgroundColor": "#dcfce7",
-        "color": "#16a34a",
-        "fontWeight": "bold"
-      }
-    },
-    {
-      "field": "status",
-      "condition": "value == 'active'",
-      "style": {
-        "backgroundColor": "#dbeafe",
-        "color": "#2563eb"
-      }
+      "id": "advanced_table_with_filters",
+      "title": "📋 Advanced Table with Config Filters",
+      "type": "table",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 10
+      },
+      "dataConfig": {
+        "table": "VVPVSG_INVENTORY_001_VIEW_001",
+        "columns": [
+          {
+            "field": "prodName",
+            "title": "ชื่อสินค้า",
+            "width": 200,
+            "sortable": true,
+            "filterable": true
+          },
+          {
+            "field": "prodGrp",
+            "title": "กลุ่มสินค้า",
+            "width": 120,
+            "sortable": true,
+            "filterable": true
+          },
+          {
+            "field": "branch",
+            "title": "สาขา",
+            "width": 100,
+            "sortable": true,
+            "filterable": true
+          },
+          {
+            "field": "buyPrice",
+            "title": "ราคาซื้อ",
+            "width": 100,
+            "sortable": true,
+            "format": "currency",
+            "align": "right"
+          },
+          {
+            "field": "qtyFromThisDoc",
+            "title": "จำนวน",
+            "width": 80,
+            "sortable": true,
+            "format": "number",
+            "align": "right"
+          },
+          {
+            "field": "totalFromBuyPrice",
+            "title": "รวม",
+            "width": 120,
+            "sortable": true,
+            "format": "currency",
+            "align": "right"
+          },
+          {
+            "field": "docDate",
+            "title": "วันที่",
+            "width": 100,
+            "sortable": true,
+            "format": "date"
+          },
+          {
+            "field": "daysAge",
+            "title": "อายุ (วัน)",
+            "width": 80,
+            "sortable": true,
+            "format": "number",
+            "align": "right"
+          }
+        ]
+      },
+      "styleConfig": {
+        "showPagination": true,
+        "pageSize": 25,
+        "pageSizeOptions": [10, 25, 50, 100],
+        "showSearch": true,
+        "showExport": true,
+        "exportFormats": ["excel", "pdf"],
+        "striped": true,
+        "bordered": true,
+        "hoverable": true,
+        "compact": false,
+        "headerBackground": "#1f2937",
+        "headerColor": "#f9fafb"
+      },
+      "filterConfig": {
+        "enabled": true,
+        "showFilterBar": true,
+        "autoApply": true,
+        "filters": [
+          {
+            "column": "dataDate",
+            "operator": ">=",
+            "label": "ตั้งแต่วันที่"
+          },
+          {
+            "column": "dataDate",
+            "operator": "<=",
+            "label": "จนถึงวันที่"
+          },
+          {
+            "column": "prodGrp",
+            "type": "select",
+            "label": "กลุ่มสินค้า",
+            "options": "dynamic",
+            "placeholder": "เลือกกลุ่มสินค้า...",
+            "operator": "=",
+            "visible": true
+          },
+          {
+            "column": "branch",
+            "type": "select",
+            "label": "สาขา",
+            "options": "dynamic",
+            "placeholder": "เลือกสาขา...",
+            "operator": "=",
+            "visible": true
+          },
+          {
+            "column": "prodName",
+            "type": "text",
+            "label": "ชื่อสินค้า",
+            "placeholder": "ค้นหาชื่อสินค้า...",
+            "operator": "contains",
+            "visible": true
+          },
+          {
+            "column": "buyPrice",
+            "type": "number",
+            "label": "ราคาซื้อ (ขั้นต่ำ)",
+            "placeholder": "ราคาขั้นต่ำ...",
+            "operator": ">=",
+            "visible": true
+          },
+          {
+            "column": "daysAge",
+            "type": "number",
+            "label": "อายุสูงสุด (วัน)",
+            "placeholder": "อายุสูงสุด...",
+            "operator": "<=",
+            "defaultValue": 365,
+            "visible": true
+          },
+          {
+            "column": "docDate",
+            "type": "date",
+            "label": "วันที่เอกสาร",
+            "placeholder": "เลือกวันที่...",
+            "operator": ">=",
+            "visible": true
+          }
+        ]
+      },
+      "conditionalFormatting": [
+        {
+          "field": "daysAge",
+          "condition": "value > 180",
+          "style": {
+            "backgroundColor": "#fee2e2",
+            "color": "#dc2626",
+            "fontWeight": "bold"
+          }
+        },
+        {
+          "field": "daysAge",
+          "condition": "value > 90 && value <= 180",
+          "style": {
+            "backgroundColor": "#fef3c7",
+            "color": "#d97706"
+          }
+        },
+        {
+          "field": "daysAge",
+          "condition": "value <= 30",
+          "style": {
+            "backgroundColor": "#dcfce7",
+            "color": "#16a34a"
+          }
+        },
+        {
+          "field": "totalFromBuyPrice",
+          "condition": "value > 50000",
+          "style": {
+            "backgroundColor": "#dbeafe",
+            "color": "#2563eb",
+            "fontWeight": "bold"
+          }
+        },
+        {
+          "field": "buyPrice",
+          "condition": "value < 100",
+          "style": {
+            "color": "#6b7280",
+            "fontStyle": "italic"
+          }
+        }
+      ],
+      "visible": true,
+      "refreshInterval": 300000
     }
   ],
-  "visible": true,
-  "refreshInterval": 60000
+  "autoRefresh": false,
+  "refreshInterval": 0
 }
