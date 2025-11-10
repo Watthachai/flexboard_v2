@@ -160,9 +160,10 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
     if (configFilterDefs.length === 0) return {};
 
     const initialFilters: { [key: string]: any } = {};
-    configFilterDefs.forEach((filter) => {
+    configFilterDefs.forEach((filter, index) => {
+      const filterKey = `${index}-${filter.column}`;
       if (filter.defaultValue !== undefined) {
-        initialFilters[filter.column] = filter.defaultValue;
+        initialFilters[filterKey] = filter.defaultValue;
       }
     });
     return initialFilters;
@@ -180,7 +181,10 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
       return rows;
 
     return rows.filter((row) => {
-      return Object.entries(activeConfigFilters).every(([column, value]) => {
+      return Object.entries(activeConfigFilters).every(([key, value]) => {
+        // Extract column name from key (format: "index-columnName")
+        const column = key.split("-").slice(1).join("-");
+
         // Skip filtering if value is empty, null, undefined, or special __ALL__ value
         if (
           value === null ||
@@ -193,7 +197,9 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
         const cellValue = row[column];
         if (cellValue == null) return false;
 
-        const filterDef = configFilterDefs.find((f) => f.column === column);
+        // Find the filter definition by key
+        const filterIndex = parseInt(key.split("-")[0]);
+        const filterDef = configFilterDefs[filterIndex];
         if (!filterDef) return true;
 
         const operator = filterDef.operator || "contains";
@@ -214,21 +220,79 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
           case "endsWith":
             return strValue.endsWith(filterValue);
           case ">":
-            const num1 = parseFloat(cellValue);
-            const filter1 = parseFloat(value);
-            return !isNaN(num1) && !isNaN(filter1) && num1 > filter1;
           case "<":
-            const num2 = parseFloat(cellValue);
-            const filter2 = parseFloat(value);
-            return !isNaN(num2) && !isNaN(filter2) && num2 < filter2;
           case ">=":
-            const num3 = parseFloat(cellValue);
-            const filter3 = parseFloat(value);
-            return !isNaN(num3) && !isNaN(filter3) && num3 >= filter3;
-          case "<=":
-            const num4 = parseFloat(cellValue);
-            const filter4 = parseFloat(value);
-            return !isNaN(num4) && !isNaN(filter4) && num4 <= filter4;
+          case "<=": {
+            // Try numeric comparison first
+            const num = parseFloat(cellValue);
+            const filterNum = parseFloat(value);
+
+            // If both are valid numbers, compare as numbers
+            if (!isNaN(num) && !isNaN(filterNum)) {
+              switch (operator) {
+                case ">":
+                  return num > filterNum;
+                case "<":
+                  return num < filterNum;
+                case ">=":
+                  return num >= filterNum;
+                case "<=":
+                  return num <= filterNum;
+              }
+            }
+
+            // Try to parse as date (support dd/MM/yyyy format)
+            const parseDateValue = (val: any): Date | null => {
+              if (!val) return null;
+              const str = String(val).trim();
+
+              // Only parse as date if it looks like a date format
+              // Skip pure numbers to avoid treating year numbers as dates
+              if (/^\d+$/.test(str)) return null;
+
+              // Try dd/MM/yyyy format
+              const ddMMyyyyMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+              if (ddMMyyyyMatch) {
+                const [, day, month, year] = ddMMyyyyMatch;
+                return new Date(
+                  parseInt(year),
+                  parseInt(month) - 1,
+                  parseInt(day)
+                );
+              }
+
+              // Try ISO format (yyyy-MM-dd)
+              const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+              if (isoMatch) {
+                const date = new Date(str);
+                return isNaN(date.getTime()) ? null : date;
+              }
+
+              return null;
+            };
+
+            const cellDate = parseDateValue(cellValue);
+            const filterDate = parseDateValue(value);
+
+            if (cellDate && filterDate) {
+              // Compare as dates
+              const cellTime = cellDate.getTime();
+              const filterTime = filterDate.getTime();
+
+              switch (operator) {
+                case ">":
+                  return cellTime > filterTime;
+                case "<":
+                  return cellTime < filterTime;
+                case ">=":
+                  return cellTime >= filterTime;
+                case "<=":
+                  return cellTime <= filterTime;
+              }
+            }
+
+            return false;
+          }
           default:
             return true;
         }
@@ -583,7 +647,6 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
 
       let position = 0;
       const imgData = canvas.toDataURL("image/jpeg", 0.85); // ใช้ JPEG แทน PNG และ quality 85%
-
       // Add first page
       doc.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
       heightLeft -= pageHeight;
@@ -635,19 +698,19 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
     return styles;
   };
 
-  // Update config filter
-  const updateConfigFilter = (column: string, value: any) => {
+  // Update config filter (now accepts filterKey instead of column)
+  const updateConfigFilter = (filterKey: string, value: any) => {
     setConfigFilters((prev) => ({
       ...prev,
-      [column]: value,
+      [filterKey]: value,
     }));
   };
 
-  // Clear config filter
-  const clearConfigFilter = (column: string) => {
+  // Clear config filter (now accepts filterKey instead of column)
+  const clearConfigFilter = (filterKey: string) => {
     setConfigFilters((prev) => {
       const newFilters = { ...prev };
-      delete newFilters[column];
+      delete newFilters[filterKey];
       return newFilters;
     });
   };
@@ -857,8 +920,11 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
   };
 
   // Render config filter input
-  const renderConfigFilterInput = (filter: ConfigFilter) => {
-    const currentValue = configFilters[filter.column] || "";
+  const renderConfigFilterInput = (filter: ConfigFilter, index: number) => {
+    // Create unique key using index and column name
+    const filterKey = `${index}-${filter.column}`;
+    const currentValue = configFilters[filterKey] || "";
+
     const uniqueValues =
       filter.options === "dynamic"
         ? getUniqueValues(filter.column)
@@ -871,7 +937,7 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
       filterType === "select" ? currentValue || "__ALL__" : currentValue;
 
     return (
-      <div key={filter.column} className="flex flex-col space-y-1">
+      <div key={filterKey} className="flex flex-col space-y-1">
         {filter.label && (
           <label className="text-xs font-medium text-gray-600">
             {filter.label}
@@ -883,10 +949,7 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
             <Select
               value={selectValue}
               onValueChange={(value) =>
-                updateConfigFilter(
-                  filter.column,
-                  value === "__ALL__" ? "" : value
-                )
+                updateConfigFilter(filterKey, value === "__ALL__" ? "" : value)
               }
             >
               <SelectTrigger className="h-8 text-xs flex-1">
@@ -911,21 +974,21 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
-                  className="h-8 text-xs justify-start text-left flex-1"
+                  className="h-9 text-xs justify-start text-left flex-1 font-normal"
                 >
-                  <CalendarIcon className="mr-1 h-3 w-3" />
+                  <CalendarIcon className="mr-2 h-4 w-4" />
                   {currentValue
                     ? format(new Date(currentValue), "dd/MM/yyyy")
                     : filter.placeholder || "เลือกวันที่"}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-auto p-0">
+              <PopoverContent className="w-auto p-0" align="start">
                 <Calendar
                   mode="single"
                   selected={currentValue ? new Date(currentValue) : undefined}
                   onSelect={(date) =>
                     updateConfigFilter(
-                      filter.column,
+                      filterKey,
                       date ? date.toISOString().split("T")[0] : ""
                     )
                   }
@@ -940,9 +1003,7 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
               }
               className="h-8 text-xs flex-1"
               value={currentValue}
-              onChange={(e) =>
-                updateConfigFilter(filter.column, e.target.value)
-              }
+              onChange={(e) => updateConfigFilter(filterKey, e.target.value)}
             />
           )}
 
@@ -950,7 +1011,7 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => clearConfigFilter(filter.column)}
+              onClick={() => clearConfigFilter(filterKey)}
               className="h-8 w-8 p-0"
             >
               <X className="h-3 w-3" />
@@ -1046,7 +1107,7 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {configFilterDefs
                 .filter((filter) => filter.visible !== false)
-                .map((filter) => renderConfigFilterInput(filter))}
+                .map((filter, index) => renderConfigFilterInput(filter, index))}
             </div>
           </div>
         )}
