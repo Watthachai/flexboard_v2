@@ -40,6 +40,41 @@ async function getSampleData(
 
 // Function to check if prompt is dashboard-related
 function isDashboardRelated(prompt: string): boolean {
+  const lowerPrompt = prompt.toLowerCase().trim();
+
+  // ⭐ อนุญาตให้ผ่านคำทักทายและคำถามทั่วไป
+  const greetingPatterns = [
+    // Thai greetings and questions
+    "สวัสดี",
+    "หวัดดี",
+    "ดีครับ",
+    "ดีค่ะ",
+    "ทำไรได้บ้าง",
+    "ทำอะไรได้บ้าง",
+    "คุณทำอะไรได้บ้าง",
+    "ช่วยอะไรได้บ้าง",
+    "มีอะไรให้ช่วย",
+    "ทำอย่างอื่นได้",
+    "ทำอย่างอื่นได้ไหม",
+    "ช่วยอะไรได้",
+    "ช่วยผมได้ไหม",
+
+    // English greetings and questions
+    "hello",
+    "hi",
+    "hey",
+    "what can you do",
+    "what do you do",
+    "how can you help",
+    "can you help",
+    "help me",
+  ];
+
+  // ถ้าเป็นคำทักทายหรือคำถามทั่วไป → ให้ผ่าน
+  if (greetingPatterns.some((pattern) => lowerPrompt.includes(pattern))) {
+    return true;
+  }
+
   const dashboardKeywords = [
     // English keywords
     "dashboard",
@@ -95,7 +130,6 @@ function isDashboardRelated(prompt: string): boolean {
     "คอนฟิก",
   ];
 
-  const lowerPrompt = prompt.toLowerCase();
   return dashboardKeywords.some((keyword) =>
     lowerPrompt.includes(keyword.toLowerCase())
   );
@@ -225,14 +259,15 @@ router.post(
 
       // Check if prompt is dashboard-related
       if (!isDashboardRelated(prompt)) {
+        // ⭐ ตอบแบบเป็นธรรมชาติ พยายามเชื่อมโยงกับ Dashboard
         return res.json({
           explanation:
-            "ฉันเป็น AI ที่เชี่ยวชาญเฉพาะด้านการสร้างและจัดการ Dashboard เท่านั้น กรุณาถามคำถามที่เกี่ยวข้องกับ Dashboard, Chart, Widget, หรือการแสดงผลข้อมูลครับ",
+            '� ขอบคุณที่คุยกับผมนะครับ!\n\nแม้ว่าผมจะเชี่ยวชาญเฉพาะด้าน Dashboard แต่ผมยินดีที่จะคุยด้วยเสมอครับ ถ้าคุณมีข้อมูลที่อยากจะวิเคราะห์ หรืออยากทำ dashboard สวยๆ สักอัน ผมพร้อมช่วยเหลือนะครับ! 📊\n\n**ตัวอย่างเช่น:**\n- "ช่วยสร้าง dashboard แสดงยอดขายให้หน่อย"\n- "เพิ่ม bar chart เปรียบเทียบข้อมูล"\n- "ทำ KPI แสดงตัวเลขสำคัญ"\n\nมีอะไรให้ช่วยเรื่อง dashboard ไหมครับ? 😊',
           config: null,
           suggestions: [
-            "สร้าง dashboard ใหม่",
-            "เพิ่ม chart ใหม่",
-            "แสดงข้อมูลในรูปแบบ KPI",
+            "ช่วยสร้าง dashboard แสดงยอดขายให้หน่อย",
+            "เพิ่ม bar chart เปรียบเทียบข้อมูล",
+            "ทำ KPI แสดงตัวเลขสำคัญ",
           ],
         });
       }
@@ -641,13 +676,14 @@ router.post("/tenants/:tenantId/ai-assistant/chat", async (req, res) => {
 
     // Check if message is dashboard-related
     if (!isDashboardRelated(message)) {
+      // ⭐ ตอบแบบเป็นธรรมชาติ พยายามเชื่อมโยงกับ Dashboard
       return res.json({
         response:
-          "ฉันเป็น AI ที่เชี่ยวชาญเฉพาะด้านการสร้างและจัดการ Dashboard เท่านั้น กรุณาถามคำถามที่เกี่ยวข้องกับ Dashboard, Chart, Widget, หรือการแสดงผลข้อมูลครับ",
+          '👋 ขอบคุณที่คุยกับผมนะครับ!\n\nแม้ว่าผมจะเชี่ยวชาญเฉพาะด้าน Dashboard แต่ผมยินดีที่จะคุยด้วยเสมอครับ ถ้าคุณมีข้อมูลที่อยากจะวิเคราะห์ หรืออยากทำ dashboard สวยๆ สักอัน ผมพร้อมช่วยเหลือนะครับ! 📊\n\n**ตัวอย่างเช่น:**\n- "ช่วยสร้าง dashboard แสดงยอดขายให้หน่อย"\n- "เพิ่ม bar chart เปรียบเทียบข้อมูล"\n- "ทำ KPI แสดงตัวเลขสำคัญ"\n\nมีอะไรให้ช่วยเรื่อง dashboard ไหมครับ? 😊',
         suggestions: [
-          "สร้าง dashboard ใหม่",
-          "เพิ่ม chart ใหม่",
-          "แสดงข้อมูลในรูปแบบ KPI",
+          "ช่วยสร้าง dashboard แสดงยอดขายให้หน่อย",
+          "เพิ่ม bar chart เปรียบเทียบข้อมูล",
+          "ทำ KPI แสดงตัวเลขสำคัญ",
         ],
       });
     }

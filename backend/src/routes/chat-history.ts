@@ -76,18 +76,24 @@ router.post(
       const { initialMessage } = req.body;
       const userId = (req as any).user?.uid;
 
+      console.log("📝 Creating session with initialMessage:", initialMessage);
+
       if (!userId) {
         return res.status(401).json({ error: "Unauthorized" });
       }
 
       const now = new Date();
+      const title = initialMessage
+        ? generateSimpleTitle(initialMessage)
+        : "New Chat";
+
+      console.log("📌 Generated title:", title);
+
       const sessionData = {
         userId,
         tenantId,
         dashboardId,
-        title: initialMessage
-          ? generateSimpleTitle(initialMessage)
-          : "New Chat",
+        title,
         messages: initialMessage
           ? [
               {
@@ -233,19 +239,20 @@ router.post(
         }),
       });
 
+      // ⭐ ลบ auto-update title ออก - เพราะเราตั้ง title ไว้ตอนสร้างแล้ว
       // Auto-update title
-      if (
-        sessionData?.title === "New Chat" &&
-        updatedMessages.length >= 2 &&
-        updatedMessages.length <= 4
-      ) {
-        const userMessages = updatedMessages
-          .filter((m: any) => m.role === "user")
-          .map((m: any) => m.content)
-          .join(" ");
-        const newTitle = generateSimpleTitle(userMessages);
-        await docRef.update({ title: newTitle });
-      }
+      // if (
+      //   sessionData?.title === "New Chat" &&
+      //   updatedMessages.length >= 2 &&
+      //   updatedMessages.length <= 4
+      // ) {
+      //   const userMessages = updatedMessages
+      //     .filter((m: any) => m.role === "user")
+      //     .map((m: any) => m.content)
+      //     .join(" ");
+      //   const newTitle = generateSimpleTitle(userMessages);
+      //   await docRef.update({ title: newTitle });
+      // }
 
       res.json({ message: newMessage });
     } catch (error: any) {

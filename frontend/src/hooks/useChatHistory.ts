@@ -138,6 +138,10 @@ export function useChatHistory({
     }
   };
 
+  const clearCurrentSession = () => {
+    setCurrentSessionId(null);
+  };
+
   return {
     sessions,
     currentSessionId,
@@ -152,5 +156,6 @@ export function useChatHistory({
     // importSession, // TODO: Not yet implemented
     searchSessions,
     refreshSessions: loadSessions,
+    clearCurrentSession, // ⭐ NEW: Clear current session
   };
 }

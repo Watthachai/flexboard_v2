@@ -173,9 +173,17 @@ export function AIConfigAssistant({
             setDisplayedContent(fullContent.slice(0, currentIndex));
             currentIndex++;
 
-            // Auto scroll during typing
+            // Auto scroll during typing - ใช้ viewport element ของ ScrollArea
             if (scrollRef.current) {
-              scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+              const viewport = scrollRef.current.querySelector(
+                "[data-radix-scroll-area-viewport]"
+              );
+              if (viewport) {
+                viewport.scrollTo({
+                  top: viewport.scrollHeight,
+                  behavior: "smooth",
+                });
+              }
             }
           } else {
             // Typing complete
@@ -220,7 +228,7 @@ export function AIConfigAssistant({
               })
             );
           }
-        }); // Typing speed (10ms per character = very fast!)
+        }, 15); // ⭐ เพิ่มความเร็วให้นุ่มนวลขึ้น (15ms แทน 10ms)
 
         return () => {
           if (typingIntervalRef.current) {
@@ -392,11 +400,60 @@ export function AIConfigAssistant({
   }, [chatHistory.loading, chatHistory.sessions.length, user?.uid]);
 
   useEffect(() => {
-    // Auto scroll to bottom when new messages arrive
+    // Auto scroll to bottom when new messages arrive (smooth scroll)
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      const viewport = scrollRef.current.querySelector(
+        "[data-radix-scroll-area-viewport]"
+      );
+      if (viewport) {
+        viewport.scrollTo({
+          top: viewport.scrollHeight,
+          behavior: "smooth",
+        });
+      }
     }
-  }, [messages]);
+  }, [messages, messages.length]); // ⭐ Track both messages and length for better reactivity
+
+  // ⭐ NEW: Auto-scroll during typing animation
+  useEffect(() => {
+    if (typingMessageIndex !== null && displayedContent && scrollRef.current) {
+      const viewport = scrollRef.current.querySelector(
+        "[data-radix-scroll-area-viewport]"
+      );
+      if (viewport) {
+        viewport.scrollTo({
+          top: viewport.scrollHeight,
+          behavior: "smooth",
+        });
+      }
+    }
+  }, [displayedContent, typingMessageIndex]);
+
+  // ⭐ NEW: Auto-scroll to bottom when loading is done (after session load)
+  useEffect(() => {
+    if (!isLoadingSession && messages.length > 0) {
+      // ใช้ setTimeout เพื่อให้แน่ใจว่า DOM render เสร็จแล้ว
+      const scrollToBottom = () => {
+        if (scrollRef.current) {
+          // ScrollArea ของ shadcn/ui ใช้ viewport element
+          const viewport = scrollRef.current.querySelector(
+            "[data-radix-scroll-area-viewport]"
+          );
+          if (viewport) {
+            viewport.scrollTop = viewport.scrollHeight;
+          } else {
+            // fallback ถ้าหาไม่เจอ
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+          }
+        }
+      };
+
+      // เรียกหลายรอบเพื่อให้แน่ใจว่าได้ scroll
+      setTimeout(scrollToBottom, 100);
+      setTimeout(scrollToBottom, 300);
+      setTimeout(scrollToBottom, 600);
+    }
+  }, [isLoadingSession, messages.length]);
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
@@ -413,10 +470,13 @@ export function AIConfigAssistant({
 
     // ✅ สร้าง session ถ้ายังไม่มี (เมื่อส่งข้อความครั้งแรก)
     let sessionId = chatHistory.currentSessionId;
+    let isNewSession = false; // ⭐ ติดตามว่าเป็น session ใหม่หรือไม่
+
     if (!sessionId && user?.uid) {
       try {
         console.log("✨ Creating new session with first message...");
         sessionId = await chatHistory.createNewSession(userMessage.content);
+        isNewSession = true; // ⭐ เป็น session ใหม่
 
         // บันทึก session ลง localStorage
         const storageKey = `lastChatSession_${tenantId}_${dashboardId}`;
@@ -428,8 +488,9 @@ export function AIConfigAssistant({
       }
     }
 
-    // Auto-save user message (ถ้ามี session แล้ว)
-    if (sessionId) {
+    // Auto-save user message (ถ้ามี session แล้ว และไม่ใช่ session ใหม่)
+    // ⭐ ถ้าเป็น session ใหม่ ข้อความแรกถูกเก็บไว้แล้วตอนสร้าง session
+    if (sessionId && !isNewSession) {
       try {
         await chatHistory.saveMessage(sessionId, {
           role: "user",
@@ -700,7 +761,8 @@ export function AIConfigAssistant({
         const storageKey = `lastChatSession_${tenantId}_${dashboardId}`;
         localStorage.setItem(storageKey, sessionId);
 
-        toast.success(`โหลด "${session.title}" แล้ว`);
+        // ⭐ ลบ toast ออก - ไม่ต้องแจ้งเตือนทุกครั้งที่ load
+        // toast.success(`โหลด "${session.title}" แล้ว`);
       }
     } catch (error) {
       console.error("Failed to load session:", error);
@@ -710,29 +772,28 @@ export function AIConfigAssistant({
 
   const handleNewChat = async () => {
     try {
-      setIsLoadingSession(true); // แสดง loading
-      const sessionId = await chatHistory.createNewSession(
-        "New Dashboard Chat"
-      );
-      setCurrentSessionTitle("New Chat");
+      // ⭐ ไม่สร้าง session ทันที - รอให้ user พิมพ์ก่อน
+      setCurrentSessionTitle(null);
+
+      // ⭐ Clear current session
+      chatHistory.clearCurrentSession();
+
       setMessages([
         {
           role: "assistant",
-          content: `👋 เริ่มการสนทนาใหม่! พร้อมช่วยสร้าง dashboard แล้วครับ`,
+          content: `👋 เริ่มการสนทนาใหม่! ผมพร้อมช่วยสร้าง dashboard ให้คุณแล้วครับ\n\nบอกมาเลยว่าอยากจะทำอะไร เช่น:\n- สร้าง chart ใหม่\n- แก้ไข widget ที่มีอยู่\n- ดูสรุป dashboard config\n\n(I can also respond in English if you prefer!)`,
           timestamp: new Date(),
           isTyping: false,
         },
       ]);
 
-      // บันทึก session ใหม่ลง localStorage
+      // ⭐ ลบ session เก่าออกจาก localStorage (รอสร้างใหม่ตอน user ส่งข้อความ)
       const storageKey = `lastChatSession_${tenantId}_${dashboardId}`;
-      localStorage.setItem(storageKey, sessionId);
+      localStorage.removeItem(storageKey);
 
-      setIsLoadingSession(false); // ปิด loading
       toast.success("เริ่ม Chat ใหม่แล้ว!");
     } catch (error) {
-      console.error("Failed to create new session:", error);
-      setIsLoadingSession(false); // ปิด loading แม้ error
+      console.error("Failed to create new chat:", error);
       toast.error("ไม่สามารถสร้าง Chat ใหม่ได้");
     }
   };
