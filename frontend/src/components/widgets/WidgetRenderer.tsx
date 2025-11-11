@@ -81,12 +81,16 @@ export default function WidgetRenderer({
           } = widget.dataConfig;
 
           const selectFields = [];
+          const hasGroupBy = groupBy && groupBy.length > 0;
 
           // Handle different field types for different widgets
           if (labelField && valueField) {
             // For pie/doughnut charts using labelField and valueField
-            selectFields.push(labelField);
-            if (aggregation && groupBy && groupBy.length > 0) {
+            // Only add labelField if no GROUP BY or if in GROUP BY
+            if (!hasGroupBy || (groupBy && groupBy.includes(labelField))) {
+              selectFields.push(labelField);
+            }
+            if (aggregation && hasGroupBy) {
               selectFields.push(
                 `${aggregation.toUpperCase()}(${valueField}) as ${valueField}`
               );
@@ -105,10 +109,13 @@ export default function WidgetRenderer({
           } else {
             // Standard xField/yField approach
             if (xField) {
-              selectFields.push(xField);
+              // Only add xField if no GROUP BY or if in GROUP BY
+              if (!hasGroupBy || (groupBy && groupBy.includes(xField))) {
+                selectFields.push(xField);
+              }
             }
             if (yField) {
-              if (aggregation && groupBy && groupBy.length > 0) {
+              if (aggregation && hasGroupBy) {
                 selectFields.push(
                   `${aggregation.toUpperCase()}(${yField}) as ${yField}`
                 );

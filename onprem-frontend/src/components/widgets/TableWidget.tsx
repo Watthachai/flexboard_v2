@@ -26,6 +26,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { format, isValid, parseISO } from "date-fns";
+import {
   ChevronLeft,
   ChevronRight,
   Download,
@@ -33,7 +40,41 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  Filter,
+  X,
+  CalendarIcon,
 } from "lucide-react";
+import jsPDF from "jspdf";
+
+interface ColumnFilter {
+  column: string;
+  type: "text" | "number" | "date" | "select";
+  value: any;
+  operator?:
+    | "="
+    | "!="
+    | ">"
+    | "<"
+    | ">="
+    | "<="
+    | "contains"
+    | "startsWith"
+    | "endsWith"
+    | "between";
+  values?: any[]; // for between operator or multi-select
+}
+
+interface ConfigFilter {
+  column: string;
+  type?: "text" | "number" | "date" | "select";
+  label?: string;
+  defaultValue?: any;
+  options?: string[] | "dynamic";
+  operator?: string;
+  operators?: string[];
+  placeholder?: string;
+  visible?: boolean;
+}
 
 interface TableWidgetProps {
   widget: any;
@@ -41,24 +82,18 @@ interface TableWidgetProps {
 }
 
 export default function TableWidget({ widget, data }: TableWidgetProps) {
-  const { title, styleConfig = {} } = widget;
+  const {
+    title,
+    styleConfig = {},
+    filterConfig = {},
+    conditionalFormatting = [],
+  } = widget;
   const { columns, data: rows } = data;
-
-  // State for table functionality
-  const [currentPage, setCurrentPage] = useState(1);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [sortConfig, setSortConfig] = useState<{
-    key: string;
-    direction: "asc" | "desc" | null;
-  }>({
-    key: "",
-    direction: null,
-  });
 
   // Extract style config with defaults
   const {
     showPagination = true,
-    pageSize = 20,
+    pageSize: defaultPageSize = 20,
     pageSizeOptions = [10, 20, 50, 100],
     showSearch = true,
     showExport = true,
@@ -71,18 +106,324 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
     headerColor = "#fff",
   } = styleConfig;
 
+  // State for table functionality
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(defaultPageSize);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortConfig, setSortConfig] = useState<{
+    key: string;
+    direction: "asc" | "desc" | null;
+  }>({
+    key: "",
+    direction: null,
+  });
+  const [columnFilters, setColumnFilters] = useState<ColumnFilter[]>([]);
+  const [showFilters, setShowFilters] = useState(false);
+  const [configFilters, setConfigFilters] = useState<{ [key: string]: any }>(
+    {}
+  );
+
+  // Helper function to format cell values (especially dates)
+  const formatCellValue = (value: any): string => {
+    if (value === null || value === undefined) return "-";
+
+    // Check if value looks like an ISO date string
+    if (
+      typeof value === "string" &&
+      value.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
+    ) {
+      try {
+        const date = parseISO(value);
+        if (isValid(date)) {
+          return format(date, "dd/MM/yyyy");
+        }
+      } catch {
+        // If parsing fails, return original value
+      }
+    }
+
+    return String(value);
+  };
+
+  // Extract filter config
+  const {
+    enabled: filtersEnabled = false,
+    filters: configFilterDefs = [],
+    showFilterBar = true,
+  } = filterConfig as {
+    enabled?: boolean;
+    filters?: ConfigFilter[];
+    showFilterBar?: boolean;
+  };
+
+  // Initialize config filters with default values
+  const initialConfigFilters = useMemo(() => {
+    if (configFilterDefs.length === 0) return {};
+
+    const initialFilters: { [key: string]: any } = {};
+    configFilterDefs.forEach((filter, index) => {
+      const filterKey = `${index}-${filter.column}`;
+      if (filter.defaultValue !== undefined) {
+        initialFilters[filterKey] = filter.defaultValue;
+      }
+    });
+    return initialFilters;
+  }, [configFilterDefs]);
+
+  // Use initialized filters if configFilters is empty
+  const activeConfigFilters =
+    Object.keys(configFilters).length > 0
+      ? configFilters
+      : initialConfigFilters;
+
+  // Apply config filters to data
+  const filteredByConfigFilters = useMemo(() => {
+    if (!filtersEnabled || Object.keys(activeConfigFilters).length === 0)
+      return rows;
+
+    return rows.filter((row) => {
+      return Object.entries(activeConfigFilters).every(([key, value]) => {
+        // Extract column name from key (format: "index-columnName")
+        const column = key.split("-").slice(1).join("-");
+
+        // Skip filtering if value is empty, null, undefined, or special __ALL__ value
+        if (
+          value === null ||
+          value === undefined ||
+          value === "" ||
+          value === "__ALL__"
+        )
+          return true;
+
+        const cellValue = row[column];
+        if (cellValue == null) return false;
+
+        // Find the filter definition by key
+        const filterIndex = parseInt(key.split("-")[0]);
+        const filterDef = configFilterDefs[filterIndex];
+        if (!filterDef) return true;
+
+        const operator = filterDef.operator || "contains";
+        const strValue = String(cellValue).toLowerCase();
+        const filterValue = String(value).toLowerCase();
+
+        switch (operator) {
+          case "=":
+          case "equals":
+            return strValue === filterValue;
+          case "!=":
+          case "notEquals":
+            return strValue !== filterValue;
+          case "contains":
+            return strValue.includes(filterValue);
+          case "startsWith":
+            return strValue.startsWith(filterValue);
+          case "endsWith":
+            return strValue.endsWith(filterValue);
+          case ">":
+          case "<":
+          case ">=":
+          case "<=": {
+            // Try numeric comparison first
+            const num = parseFloat(cellValue);
+            const filterNum = parseFloat(value);
+
+            // If both are valid numbers, compare as numbers
+            if (!isNaN(num) && !isNaN(filterNum)) {
+              switch (operator) {
+                case ">":
+                  return num > filterNum;
+                case "<":
+                  return num < filterNum;
+                case ">=":
+                  return num >= filterNum;
+                case "<=":
+                  return num <= filterNum;
+              }
+            }
+
+            // Try to parse as date (support dd/MM/yyyy format)
+            const parseDateValue = (val: any): Date | null => {
+              if (!val) return null;
+              const str = String(val).trim();
+
+              // Only parse as date if it looks like a date format
+              // Skip pure numbers to avoid treating year numbers as dates
+              if (/^\d+$/.test(str)) return null;
+
+              // Try dd/MM/yyyy format
+              const ddMMyyyyMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+              if (ddMMyyyyMatch) {
+                const [, day, month, year] = ddMMyyyyMatch;
+                return new Date(
+                  parseInt(year),
+                  parseInt(month) - 1,
+                  parseInt(day)
+                );
+              }
+
+              // Try ISO format (yyyy-MM-dd)
+              const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+              if (isoMatch) {
+                const date = new Date(str);
+                return isNaN(date.getTime()) ? null : date;
+              }
+
+              return null;
+            };
+
+            const cellDate = parseDateValue(cellValue);
+            const filterDate = parseDateValue(value);
+
+            if (cellDate && filterDate) {
+              // Compare as dates
+              const cellTime = cellDate.getTime();
+              const filterTime = filterDate.getTime();
+
+              switch (operator) {
+                case ">":
+                  return cellTime > filterTime;
+                case "<":
+                  return cellTime < filterTime;
+                case ">=":
+                  return cellTime >= filterTime;
+                case "<=":
+                  return cellTime <= filterTime;
+              }
+            }
+
+            return false;
+          }
+          default:
+            return true;
+        }
+      });
+    });
+  }, [rows, activeConfigFilters, configFilterDefs, filtersEnabled]);
+
+  // Detect column types
+  const getColumnType = (
+    columnName: string
+  ): "text" | "number" | "date" | "select" => {
+    if (!rows.length) return "text";
+
+    const sampleValues = rows
+      .slice(0, 10)
+      .map((row) => row[columnName])
+      .filter((val) => val != null);
+    if (!sampleValues.length) return "text";
+
+    // Check for dates
+    const dateRegex =
+      /^\d{4}-\d{2}-\d{2}|^\d{2}\/\d{2}\/\d{4}|^\d{2}-\d{2}-\d{4}/;
+    if (sampleValues.some((val) => dateRegex.test(String(val)))) {
+      return "date";
+    }
+
+    // Check for numbers
+    const numbers = sampleValues.filter((val) => !isNaN(Number(val)));
+    if (numbers.length > sampleValues.length * 0.8) {
+      return "number";
+    }
+
+    // Check if suitable for select (limited unique values)
+    const uniqueValues = new Set(sampleValues.map((val) => String(val)));
+    if (
+      uniqueValues.size <= 20 &&
+      uniqueValues.size < sampleValues.length * 0.8
+    ) {
+      return "select";
+    }
+
+    return "text";
+  };
+
+  // Get unique values for select filters
+  const getUniqueValues = (columnName: string) => {
+    const uniqueValues = new Set(
+      rows.map((row) => row[columnName]).filter((val) => val != null)
+    );
+    return Array.from(uniqueValues).sort();
+  };
+
+  // Apply filters
+  const filteredByColumns = useMemo(() => {
+    if (!columnFilters.length) return filteredByConfigFilters;
+
+    return filteredByConfigFilters.filter((row) => {
+      return columnFilters.every((filter) => {
+        const cellValue = row[filter.column];
+        if (cellValue == null) return false;
+
+        const strValue = String(cellValue).toLowerCase();
+        const filterValue = String(filter.value || "").toLowerCase();
+
+        switch (filter.operator) {
+          case "=":
+            return strValue === filterValue;
+          case "!=":
+            return strValue !== filterValue;
+          case "contains":
+            return strValue.includes(filterValue);
+          case "startsWith":
+            return strValue.startsWith(filterValue);
+          case "endsWith":
+            return strValue.endsWith(filterValue);
+          case ">":
+            const numValue1 = parseFloat(cellValue);
+            const numFilter1 = parseFloat(filter.value);
+            return (
+              !isNaN(numValue1) && !isNaN(numFilter1) && numValue1 > numFilter1
+            );
+          case "<":
+            const numValue2 = parseFloat(cellValue);
+            const numFilter2 = parseFloat(filter.value);
+            return (
+              !isNaN(numValue2) && !isNaN(numFilter2) && numValue2 < numFilter2
+            );
+          case ">=":
+            const numValue3 = parseFloat(cellValue);
+            const numFilter3 = parseFloat(filter.value);
+            return (
+              !isNaN(numValue3) && !isNaN(numFilter3) && numValue3 >= numFilter3
+            );
+          case "<=":
+            const numValue4 = parseFloat(cellValue);
+            const numFilter4 = parseFloat(filter.value);
+            return (
+              !isNaN(numValue4) && !isNaN(numFilter4) && numValue4 <= numFilter4
+            );
+          case "between":
+            if (!filter.values || filter.values.length !== 2) return true;
+            const numValue5 = parseFloat(cellValue);
+            const min = parseFloat(filter.values[0]);
+            const max = parseFloat(filter.values[1]);
+            return (
+              !isNaN(numValue5) &&
+              !isNaN(min) &&
+              !isNaN(max) &&
+              numValue5 >= min &&
+              numValue5 <= max
+            );
+          default:
+            return true;
+        }
+      });
+    });
+  }, [filteredByConfigFilters, columnFilters]);
+
   // Search and filter logic
   const filteredData = useMemo(() => {
-    if (!searchTerm) return rows;
+    if (!searchTerm) return filteredByColumns;
 
-    return rows.filter((row) =>
+    return filteredByColumns.filter((row) =>
       columns.some((col) =>
         String(row[col] || "")
           .toLowerCase()
           .includes(searchTerm.toLowerCase())
       )
     );
-  }, [rows, columns, searchTerm]);
+  }, [filteredByColumns, columns, searchTerm]);
 
   // Sort logic
   const sortedData = useMemo(() => {
@@ -150,67 +491,271 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
   };
 
   const exportToExcel = () => {
-    // Simple TSV export (can be opened in Excel)
-    const tsvContent = [
-      columns.join("\t"),
+    // Create proper Excel format using CSV with Excel-specific encoding
+    const cleanTitle = (title || "data").replace(/[^\w\s-]/g, ""); // Remove special characters
+    const csvContent = [
+      columns.join(","),
       ...sortedData.map((row) =>
-        columns.map((col) => String(row[col] || "")).join("\t")
+        columns
+          .map((col) => {
+            const value = String(row[col] || "");
+            // Escape quotes and wrap in quotes if contains comma, quote, or newline
+            if (
+              value.includes(",") ||
+              value.includes('"') ||
+              value.includes("\n")
+            ) {
+              return `"${value.replace(/"/g, '""')}"`;
+            }
+            return value;
+          })
+          .join(",")
       ),
     ].join("\n");
 
-    const blob = new Blob([tsvContent], { type: "application/vnd.ms-excel" });
+    // Use proper MIME type for Excel
+    const blob = new Blob(["\ufeff" + csvContent], {
+      type: "text/csv;charset=utf-8;",
+    });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${title || "data"}.xlsx`;
+    a.download = `${cleanTitle}.csv`; // Use .csv extension instead of .xlsx
     document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
   };
 
-  const exportToPDF = () => {
-    // Simple HTML export that can be printed/saved as PDF
-    const htmlContent = `
-      <html>
+  const exportToPDF = async () => {
+    try {
+      // Convert oklch/lab colors to hex for html2canvas compatibility
+      const hexHeaderBackground = headerBackground.startsWith("#")
+        ? headerBackground
+        : "#374151"; // fallback to gray-700
+      const hexHeaderColor = headerColor.startsWith("#")
+        ? headerColor
+        : "#ffffff"; // fallback to white
+
+      // Create a completely isolated iframe to avoid CSS inheritance
+      const iframe = document.createElement("iframe");
+      iframe.style.position = "absolute";
+      iframe.style.left = "-9999px";
+      iframe.style.width = "1200px";
+      iframe.style.height = "2000px";
+      document.body.appendChild(iframe);
+
+      const iframeDoc =
+        iframe.contentDocument || iframe.contentWindow?.document;
+      if (!iframeDoc) throw new Error("Cannot access iframe document");
+
+      // Create table HTML with inline styles only (no CSS variables)
+      const tableHTML = `
+        <!DOCTYPE html>
+        <html>
         <head>
-          <title>${title || "Data Export"}</title>
+          <meta charset="UTF-8">
+          <link rel="preconnect" href="https://fonts.googleapis.com">
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+          <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;600;700&display=swap" rel="stylesheet">
           <style>
-            table { border-collapse: collapse; width: 100%; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-            th { background-color: #f2f2f2; }
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { 
+              font-family: 'Noto Sans Thai', 'Tahoma', sans-serif; 
+              background-color: #ffffff;
+              color: #000000;
+              padding: 20px;
+            }
           </style>
         </head>
         <body>
-          <h1>${title || "Data Export"}</h1>
-          <table>
-            <thead>
-              <tr>${columns.map((col) => `<th>${col}</th>`).join("")}</tr>
-            </thead>
-            <tbody>
-              ${sortedData
-                .map(
-                  (row) =>
-                    `<tr>${columns
-                      .map((col) => `<td>${row[col] || ""}</td>`)
-                      .join("")}</tr>`
-                )
-                .join("")}
-            </tbody>
-          </table>
+          <div style="padding: 20px; background-color: #ffffff;">
+            <h1 style="font-size: 24px; margin-bottom: 20px; font-family: 'Noto Sans Thai', 'Tahoma', sans-serif; color: #000000; font-weight: 700;">
+              ${title || "Data Export"}
+            </h1>
+            <table style="width: 100%; border-collapse: collapse; font-family: 'Noto Sans Thai', 'Tahoma', sans-serif;">
+              <thead>
+                <tr style="background-color: ${hexHeaderBackground};">
+                  ${columns
+                    .map(
+                      (col) =>
+                        `<th style="border: 1px solid #dddddd; padding: 12px; color: ${hexHeaderColor}; font-weight: 700; text-align: left; font-family: 'Noto Sans Thai', 'Tahoma', sans-serif;">${col}</th>`
+                    )
+                    .join("")}
+                </tr>
+              </thead>
+              <tbody>
+                ${sortedData
+                  .map(
+                    (row, index) =>
+                      `<tr style="background-color: ${
+                        index % 2 === 0 ? "#f9f9f9" : "#ffffff"
+                      };">
+                        ${columns
+                          .map(
+                            (col) =>
+                              `<td style="border: 1px solid #dddddd; padding: 10px; text-align: left; color: #000000; font-family: 'Noto Sans Thai', 'Tahoma', sans-serif;">${formatCellValue(
+                                row[col]
+                              )}</td>`
+                          )
+                          .join("")}
+                      </tr>`
+                  )
+                  .join("")}
+              </tbody>
+            </table>
+          </div>
         </body>
-      </html>
-    `;
+        </html>
+      `;
 
-    const blob = new Blob([htmlContent], { type: "text/html" });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${title || "data"}.html`;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
+      iframeDoc.open();
+      iframeDoc.write(tableHTML);
+      iframeDoc.close();
+
+      // Wait for fonts to load in iframe
+      await iframeDoc.fonts.ready;
+
+      // Small delay to ensure rendering
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // Use html2canvas to capture the iframe content
+      const { default: html2canvas } = await import("html2canvas");
+      const canvas = await html2canvas(iframeDoc.body, {
+        scale: 1.5, // ลดจาก 2 เป็น 1.5 เพื่อลดขนาดไฟล์
+        useCORS: true,
+        logging: false,
+        backgroundColor: "#ffffff",
+        windowWidth: 1200,
+      });
+
+      // Remove iframe
+      document.body.removeChild(iframe);
+
+      // Calculate PDF dimensions
+      const pageWidth = columns.length > 6 ? 297 : 210; // A4 landscape/portrait
+      const pageHeight = columns.length > 6 ? 210 : 297;
+      const imgWidth = pageWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+
+      const doc = new jsPDF({
+        orientation: columns.length > 6 ? "landscape" : "portrait",
+        unit: "mm",
+        format: "a4",
+        compress: true, // เปิด compression
+      });
+
+      let position = 0;
+      const imgData = canvas.toDataURL("image/jpeg", 0.85); // ใช้ JPEG แทน PNG และ quality 85%
+      // Add first page
+      doc.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      // Add additional pages if needed
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        doc.addPage();
+        doc.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      // Save the PDF
+      const cleanTitle = (title || "data").replace(/[^\w\s-]/g, "");
+      doc.save(`${cleanTitle}.pdf`);
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      alert("เกิดข้อผิดพลาดในการสร้าง PDF กรุณาลองใหม่อีกครั้ง");
+    }
+  };
+
+  // Get conditional formatting styles for a cell
+  const getConditionalStyle = (field: string, value: any) => {
+    const styles: React.CSSProperties = {};
+
+    conditionalFormatting.forEach((rule: any) => {
+      if (rule.field === field) {
+        try {
+          // Replace 'value' with the actual cell value in the condition
+          const condition = rule.condition.replace(/value/g, String(value));
+
+          // Safely evaluate the condition
+          const isMatch = Function(`"use strict"; return (${condition})`)();
+
+          if (isMatch && rule.style) {
+            Object.assign(styles, rule.style);
+          }
+        } catch (error) {
+          // If condition evaluation fails, skip this rule
+          console.warn(
+            "Invalid conditional formatting condition:",
+            rule.condition,
+            error
+          );
+        }
+      }
+    });
+
+    return styles;
+  };
+
+  // Update config filter (now accepts filterKey instead of column)
+  const updateConfigFilter = (filterKey: string, value: any) => {
+    setConfigFilters((prev) => ({
+      ...prev,
+      [filterKey]: value,
+    }));
+  };
+
+  // Clear config filter (now accepts filterKey instead of column)
+  const clearConfigFilter = (filterKey: string) => {
+    setConfigFilters((prev) => {
+      const newFilters = { ...prev };
+      delete newFilters[filterKey];
+      return newFilters;
+    });
+  };
+
+  // Add column filter
+  const addColumnFilter = (column: string) => {
+    const type = getColumnType(column);
+    const newFilter: ColumnFilter = {
+      column,
+      type,
+      value: "",
+      operator:
+        type === "text"
+          ? "contains"
+          : type === "number"
+          ? "="
+          : type === "date"
+          ? ">="
+          : "=",
+    };
+    setColumnFilters((prev) => [...prev, newFilter]);
+  };
+
+  // Update column filter
+  const updateColumnFilter = (
+    index: number,
+    updates: Partial<ColumnFilter>
+  ) => {
+    setColumnFilters((prev) =>
+      prev.map((filter, i) =>
+        i === index ? { ...filter, ...updates } : filter
+      )
+    );
+  };
+
+  // Remove column filter
+  const removeColumnFilter = (index: number) => {
+    setColumnFilters((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // Clear all filters
+  const clearAllFilters = () => {
+    setColumnFilters([]);
+    setSearchTerm("");
   };
 
   const getSortIcon = (columnKey: string) => {
@@ -223,40 +768,308 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
     return <ArrowUpDown className="h-4 w-4 ml-1" />;
   };
 
+  // Render filter input based on type
+  const renderFilterInput = (filter: ColumnFilter, index: number) => {
+    const uniqueValues =
+      filter.type === "select" ? getUniqueValues(filter.column) : [];
+
+    return (
+      <div
+        key={index}
+        className="flex items-center space-x-2 p-2 bg-gray-50 rounded-lg"
+      >
+        <div className="flex-1">
+          <div className="text-xs font-medium text-gray-600 mb-1">
+            {filter.column}
+          </div>
+
+          <div className="flex space-x-1">
+            {/* Operator Select */}
+            <Select
+              value={filter.operator}
+              onValueChange={(value) =>
+                updateColumnFilter(index, { operator: value as any })
+              }
+            >
+              <SelectTrigger className="w-24 h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {filter.type === "text" && (
+                  <>
+                    <SelectItem value="contains">มี</SelectItem>
+                    <SelectItem value="=">เท่ากับ</SelectItem>
+                    <SelectItem value="!=">ไม่เท่า</SelectItem>
+                    <SelectItem value="startsWith">ขึ้นต้น</SelectItem>
+                    <SelectItem value="endsWith">ลงท้าย</SelectItem>
+                  </>
+                )}
+                {filter.type === "number" && (
+                  <>
+                    <SelectItem value="=">=</SelectItem>
+                    <SelectItem value="!=">≠</SelectItem>
+                    <SelectItem value=">">{">"}</SelectItem>
+                    <SelectItem value="<">{"<"}</SelectItem>
+                    <SelectItem value=">=">{">="}</SelectItem>
+                    <SelectItem value="<=">{"<="}</SelectItem>
+                    <SelectItem value="between">ระหว่าง</SelectItem>
+                  </>
+                )}
+                {filter.type === "date" && (
+                  <>
+                    <SelectItem value="=">วันที่</SelectItem>
+                    <SelectItem value=">">หลังจาก</SelectItem>
+                    <SelectItem value="<">ก่อน</SelectItem>
+                    <SelectItem value="between">ช่วง</SelectItem>
+                  </>
+                )}
+                {filter.type === "select" && (
+                  <SelectItem value="=">เท่ากับ</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+
+            {/* Value Input */}
+            {filter.type === "select" ? (
+              <Select
+                value={filter.value}
+                onValueChange={(value) => updateColumnFilter(index, { value })}
+              >
+                <SelectTrigger className="flex-1 h-8 text-xs">
+                  <SelectValue placeholder="เลือก..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {uniqueValues.map((value, i) => (
+                    <SelectItem key={i} value={String(value)}>
+                      {String(value)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : filter.type === "date" ? (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="flex-1 h-8 text-xs justify-start text-left"
+                  >
+                    <CalendarIcon className="mr-1 h-3 w-3" />
+                    {filter.value
+                      ? format(new Date(filter.value), "dd/MM/yyyy")
+                      : "เลือกวันที่"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={filter.value ? new Date(filter.value) : undefined}
+                    onSelect={(date) =>
+                      updateColumnFilter(index, {
+                        value: date ? date.toISOString().split("T")[0] : "",
+                      })
+                    }
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            ) : filter.operator === "between" ? (
+              <div className="flex space-x-1 flex-1">
+                <Input
+                  placeholder="จาก"
+                  className="h-8 text-xs"
+                  value={filter.values?.[0] || ""}
+                  onChange={(e) =>
+                    updateColumnFilter(index, {
+                      values: [e.target.value, filter.values?.[1] || ""],
+                    })
+                  }
+                />
+                <Input
+                  placeholder="ถึง"
+                  className="h-8 text-xs"
+                  value={filter.values?.[1] || ""}
+                  onChange={(e) =>
+                    updateColumnFilter(index, {
+                      values: [filter.values?.[0] || "", e.target.value],
+                    })
+                  }
+                />
+              </div>
+            ) : (
+              <Input
+                placeholder="ค่า..."
+                className="flex-1 h-8 text-xs"
+                value={filter.value}
+                onChange={(e) =>
+                  updateColumnFilter(index, { value: e.target.value })
+                }
+              />
+            )}
+          </div>
+        </div>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => removeColumnFilter(index)}
+          className="h-8 w-8 p-0"
+        >
+          <X className="h-3 w-3" />
+        </Button>
+      </div>
+    );
+  };
+
+  // Render config filter input
+  const renderConfigFilterInput = (filter: ConfigFilter, index: number) => {
+    // Create unique key using index and column name
+    const filterKey = `${index}-${filter.column}`;
+    const currentValue = configFilters[filterKey] || "";
+
+    const uniqueValues =
+      filter.options === "dynamic"
+        ? getUniqueValues(filter.column)
+        : filter.options;
+
+    const filterType = filter.type || getColumnType(filter.column);
+
+    // For select type, use __ALL__ as default if no value is set
+    const selectValue =
+      filterType === "select" ? currentValue || "__ALL__" : currentValue;
+
+    return (
+      <div key={filterKey} className="flex flex-col space-y-1">
+        {filter.label && (
+          <label className="text-xs font-medium text-gray-600">
+            {filter.label}
+          </label>
+        )}
+
+        <div className="flex items-center space-x-1">
+          {filterType === "select" && uniqueValues ? (
+            <Select
+              value={selectValue}
+              onValueChange={(value) =>
+                updateConfigFilter(filterKey, value === "__ALL__" ? "" : value)
+              }
+            >
+              <SelectTrigger className="h-8 text-xs flex-1">
+                <SelectValue
+                  placeholder={
+                    filter.placeholder ||
+                    `เลือก ${filter.label || filter.column}...`
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__ALL__">ทั้งหมด</SelectItem>
+                {(uniqueValues as string[]).map((value, i) => (
+                  <SelectItem key={i} value={String(value)}>
+                    {String(value)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : filterType === "date" ? (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="h-9 text-xs justify-start text-left flex-1 font-normal"
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {currentValue
+                    ? format(new Date(currentValue), "dd/MM/yyyy")
+                    : filter.placeholder || "เลือกวันที่"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={currentValue ? new Date(currentValue) : undefined}
+                  onSelect={(date) =>
+                    updateConfigFilter(
+                      filterKey,
+                      date ? date.toISOString().split("T")[0] : ""
+                    )
+                  }
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+          ) : (
+            <Input
+              placeholder={
+                filter.placeholder || `กรอก ${filter.label || filter.column}...`
+              }
+              className="h-8 text-xs flex-1"
+              value={currentValue}
+              onChange={(e) => updateConfigFilter(filterKey, e.target.value)}
+            />
+          )}
+
+          {currentValue && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => clearConfigFilter(filterKey)}
+              className="h-8 w-8 p-0"
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <Card className="h-full overflow-hidden flex flex-col">
       <CardHeader>
         <div className="flex justify-between items-center">
           <CardTitle>{title || "Data Table"}</CardTitle>
 
-          {/* Export Options */}
-          {showExport && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <Download className="h-4 w-4 mr-2" />
-                  Export
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                {exportFormats.includes("csv") && (
-                  <DropdownMenuItem onClick={exportToCSV}>
-                    Export as CSV
-                  </DropdownMenuItem>
-                )}
-                {exportFormats.includes("excel") && (
-                  <DropdownMenuItem onClick={exportToExcel}>
-                    Export as Excel
-                  </DropdownMenuItem>
-                )}
-                {exportFormats.includes("pdf") && (
-                  <DropdownMenuItem onClick={exportToPDF}>
-                    Export as HTML
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+          <div className="flex items-center space-x-2">
+            {/* Filter Toggle */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowFilters(!showFilters)}
+              className={showFilters ? "bg-blue-50 border-blue-300" : ""}
+            >
+              <Filter className="h-4 w-4 mr-2" />
+              Filters ({columnFilters.length})
+            </Button>
+
+            {/* Export Options */}
+            {showExport && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <Download className="h-4 w-4 mr-2" />
+                    Export
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  {exportFormats.includes("csv") && (
+                    <DropdownMenuItem onClick={exportToCSV}>
+                      Export as CSV
+                    </DropdownMenuItem>
+                  )}
+                  {exportFormats.includes("excel") && (
+                    <DropdownMenuItem onClick={exportToExcel}>
+                      Export as Excel
+                    </DropdownMenuItem>
+                  )}
+                  {exportFormats.includes("pdf") && (
+                    <DropdownMenuItem onClick={exportToPDF}>
+                      Export as PDF
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
         </div>
 
         {/* Search Bar */}
@@ -271,12 +1084,110 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
             />
           </div>
         )}
+
+        {/* Config Filters */}
+        {filtersEnabled && showFilterBar && configFilterDefs.length > 0 && (
+          <div className="mt-3 p-3 bg-gray-50 rounded-lg border">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-sm font-medium text-gray-700">
+                Quick Filters
+              </h4>
+              <div className="flex space-x-1">
+                {Object.keys(activeConfigFilters).length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setConfigFilters({})}
+                    className="text-xs h-6 px-2"
+                  >
+                    Clear All
+                  </Button>
+                )}
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              {configFilterDefs
+                .filter((filter) => filter.visible !== false)
+                .map((filter, index) => renderConfigFilterInput(filter, index))}
+            </div>
+          </div>
+        )}
+
+        {/* Advanced Filters */}
+        {showFilters && (
+          <div className="mt-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-medium">Column Filters</h4>
+              <div className="flex space-x-2">
+                {columnFilters.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearAllFilters}
+                    className="text-xs"
+                  >
+                    Clear All
+                  </Button>
+                )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="text-xs">
+                      + Add Filter
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    {columns.map((column) => (
+                      <DropdownMenuItem
+                        key={column}
+                        onClick={() => addColumnFilter(column)}
+                        disabled={columnFilters.some(
+                          (f) => f.column === column
+                        )}
+                      >
+                        {column}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+
+            {/* Render active filters */}
+            {columnFilters.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                {columnFilters.map((filter, index) =>
+                  renderFilterInput(filter, index)
+                )}
+              </div>
+            )}
+
+            {/* Filter Summary */}
+            {(searchTerm || columnFilters.length > 0) && (
+              <div className="text-xs text-gray-600 flex items-center space-x-4">
+                <span>
+                  แสดง {filteredData.length} จาก {rows.length} รายการ
+                </span>
+                {searchTerm && (
+                  <span className="bg-blue-100 px-2 py-1 rounded text-blue-800">
+                    Search: &quot;{searchTerm}&quot;
+                  </span>
+                )}
+                {columnFilters.length > 0 && (
+                  <span className="bg-green-100 px-2 py-1 rounded text-green-800">
+                    {columnFilters.length} filter
+                    {columnFilters.length > 1 ? "s" : ""} active
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </CardHeader>
 
       <CardContent className="p-0 flex-1 flex flex-col">
-        <div className="overflow-auto flex-1">
+        <div className="overflow-auto flex-1 max-h-[400px]">
           <Table>
-            <TableHeader>
+            <TableHeader className="sticky top-0 z-10">
               <TableRow style={{ backgroundColor: headerBackground }}>
                 {columns.map((col, index) => (
                   <TableHead
@@ -306,16 +1217,29 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
                     ${compact ? "text-sm" : ""}
                   `}
                 >
-                  {columns.map((col, colIndex) => (
-                    <TableCell
-                      key={colIndex}
-                      className={compact ? "py-1 px-2" : "py-2 px-4"}
-                    >
-                      {row[col] !== null && row[col] !== undefined
-                        ? String(row[col])
-                        : "-"}
-                    </TableCell>
-                  ))}
+                  {columns.map((col, colIndex) => {
+                    const rawValue = row[col];
+                    const cellValue = formatCellValue(rawValue);
+
+                    const conditionalStyle =
+                      conditionalFormatting?.enabled &&
+                      conditionalFormatting.rules
+                        ? getConditionalStyle(
+                            rawValue,
+                            conditionalFormatting.rules
+                          )
+                        : {};
+
+                    return (
+                      <TableCell
+                        key={colIndex}
+                        className={compact ? "py-1 px-2" : "py-2 px-4"}
+                        style={conditionalStyle}
+                      >
+                        {cellValue}
+                      </TableCell>
+                    );
+                  })}
                 </TableRow>
               ))}
             </TableBody>
@@ -332,7 +1256,8 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
               </span>
               <Select
                 value={pageSize.toString()}
-                onValueChange={() => {
+                onValueChange={(value) => {
+                  setPageSize(Number(value));
                   setCurrentPage(1); // Reset to first page when changing page size
                 }}
               >

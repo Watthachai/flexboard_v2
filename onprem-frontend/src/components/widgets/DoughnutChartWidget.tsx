@@ -20,12 +20,17 @@ export default function DoughnutChartWidget({
   data,
 }: DoughnutChartWidgetProps) {
   const { title, dataConfig, styleConfig, tooltipConfig } = widget;
-  const { xField, yField, aggregation } = dataConfig || {};
+  const { xField, yField, labelField, valueField, aggregation } =
+    dataConfig || {};
+
+  // Determine which fields to use
+  const nameField = labelField || xField;
+  const dataField = valueField || yField;
 
   // Extract and format chart data
   const chartData = data.data.map((row) => ({
-    name: row[xField] || "Unknown",
-    value: parseFloat(row[yField]) || 0,
+    name: row[nameField] || "Unknown",
+    value: parseFloat(row[dataField]) || 0,
     ...row, // Keep original data for tooltip formatting
   }));
 
