@@ -3,6 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: "export",
   reactCompiler: true,
+  allowedDevOrigins: ["172.168.1.135"],
   images: {
     unoptimized: true,
     remotePatterns: [
