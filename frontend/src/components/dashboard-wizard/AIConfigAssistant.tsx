@@ -146,6 +146,7 @@ export function AIConfigAssistant({
     null
   );
   const [deleteSessionId, setDeleteSessionId] = useState<string | null>(null);
+  const [isLoadingSession, setIsLoadingSession] = useState(true); // ⭐ NEW: Loading state
 
   const chatHistory = useChatHistory({
     userId: user?.uid || "anonymous",
@@ -306,22 +307,89 @@ export function AIConfigAssistant({
       setTypingMessageIndex(0);
     }
 
-    // Auto-create session if not exists
+    // Auto-load last session (ไม่สร้างใหม่จนกว่า user จะส่งข้อความ)
     const initSession = async () => {
-      if (!chatHistory.currentSessionId && user?.uid) {
-        try {
-          const sessionId = await chatHistory.createNewSession(
-            `Dashboard ${dashboardId}`
-          );
-          console.log("✅ Auto-created chat session:", sessionId);
-        } catch (error) {
-          console.error("Failed to auto-create session:", error);
+      // ถ้ายังไม่มี user ให้ข้าม
+      if (!user?.uid) {
+        // ⭐ รอ 0.5 วินาทีก่อนปิด loading เพื่อให้ transition นุ่มนวล
+        setTimeout(() => setIsLoadingSession(false), 500);
+        return;
+      }
+
+      // ใช้ localStorage เป็น lock
+      const lockKey = `chatSessionLock_${tenantId}_${dashboardId}`;
+      const now = Date.now();
+      const lockTime = localStorage.getItem(lockKey);
+
+      // ถ้ามี lock อยู่และยังไม่หมดอายุ (5 วินาที) ให้ข้าม
+      if (lockTime && now - parseInt(lockTime) < 5000) {
+        console.log("🔒 Session initialization locked, skipping...");
+        setIsLoadingSession(false);
+        return;
+      }
+
+      // ตั้ง lock
+      localStorage.setItem(lockKey, now.toString());
+
+      try {
+        // รอให้ sessions โหลดเสร็จก่อน
+        if (chatHistory.loading) {
+          console.log("⏳ Waiting for sessions to load...");
+          localStorage.removeItem(lockKey);
+          return; // ยังไม่ปิด loading ให้รอต่อ
         }
+
+        // เช็คว่ามี lastSessionId ใน localStorage หรือไม่
+        const storageKey = `lastChatSession_${tenantId}_${dashboardId}`;
+        const lastSessionId = localStorage.getItem(storageKey);
+
+        // ถ้ามี lastSessionId ให้ลอง load session นั้น
+        if (lastSessionId) {
+          const sessionExists = chatHistory.sessions.find(
+            (s) => s.id === lastSessionId
+          );
+          if (sessionExists) {
+            console.log("📂 Loading last active session:", lastSessionId);
+            await handleLoadSession(lastSessionId);
+            localStorage.removeItem(lockKey);
+            // ⭐ รอ 0.5 วินาทีก่อนปิด loading เพื่อให้ transition นุ่มนวล
+            setTimeout(() => setIsLoadingSession(false), 500);
+            return;
+          } else {
+            console.log("🗑️ Last session not found, removing...");
+            localStorage.removeItem(storageKey);
+          }
+        }
+
+        // ถ้าไม่มี lastSessionId แต่มี sessions อยู่ ให้ load session ล่าสุด
+        if (chatHistory.sessions.length > 0) {
+          const latestSession = chatHistory.sessions[0];
+          console.log("📂 Loading latest session:", latestSession.id);
+          await handleLoadSession(latestSession.id);
+          localStorage.removeItem(lockKey);
+          // ⭐ รอ 0.5 วินาทีก่อนปิด loading เพื่อให้ transition นุ่มนวล
+          setTimeout(() => setIsLoadingSession(false), 500);
+          return;
+        }
+
+        // ✅ ไม่สร้าง session ใหม่ - ให้รอจนกว่า user จะส่งข้อความครั้งแรก
+        console.log("💬 No session found - waiting for first message");
+        localStorage.removeItem(lockKey);
+        // ⭐ รอ 0.5 วินาทีก่อนปิด loading เพื่อให้ transition นุ่มนวล
+        setTimeout(() => setIsLoadingSession(false), 500);
+      } catch (error) {
+        console.error("Failed to initialize session:", error);
+        localStorage.removeItem(lockKey);
+        setTimeout(() => setIsLoadingSession(false), 500);
       }
     };
-    initSession();
+
+    // เรียกใช้งานเมื่อ sessions โหลดเสร็จแล้ว
+    if (!chatHistory.loading && user?.uid) {
+      initSession();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [chatHistory.loading, chatHistory.sessions.length, user?.uid]);
 
   useEffect(() => {
     // Auto scroll to bottom when new messages arrive
@@ -343,10 +411,27 @@ export function AIConfigAssistant({
     setInput("");
     setIsLoading(true);
 
-    // Auto-save user message
-    if (chatHistory.currentSessionId) {
+    // ✅ สร้าง session ถ้ายังไม่มี (เมื่อส่งข้อความครั้งแรก)
+    let sessionId = chatHistory.currentSessionId;
+    if (!sessionId && user?.uid) {
       try {
-        await chatHistory.saveMessage(chatHistory.currentSessionId, {
+        console.log("✨ Creating new session with first message...");
+        sessionId = await chatHistory.createNewSession(userMessage.content);
+
+        // บันทึก session ลง localStorage
+        const storageKey = `lastChatSession_${tenantId}_${dashboardId}`;
+        localStorage.setItem(storageKey, sessionId);
+
+        console.log("✅ Created session:", sessionId);
+      } catch (error) {
+        console.error("Failed to create session:", error);
+      }
+    }
+
+    // Auto-save user message (ถ้ามี session แล้ว)
+    if (sessionId) {
+      try {
+        await chatHistory.saveMessage(sessionId, {
           role: "user",
           content: userMessage.content,
         });
@@ -470,7 +555,9 @@ export function AIConfigAssistant({
         });
 
         // Auto-save assistant message
-        autoSaveAssistantMessage(assistantMessage);
+        if (sessionId) {
+          autoSaveAssistantMessage(sessionId, assistantMessage);
+        }
       } else {
         // General chat
         setLoadingStatus("💬 ประมวลผลคำถามของคุณ...");
@@ -517,7 +604,9 @@ export function AIConfigAssistant({
         });
 
         // Auto-save assistant message
-        autoSaveAssistantMessage(assistantMessage);
+        if (sessionId) {
+          autoSaveAssistantMessage(sessionId, assistantMessage);
+        }
       }
     } catch (error: any) {
       console.error("AI Assistant Error:", error);
@@ -546,10 +635,13 @@ export function AIConfigAssistant({
   };
 
   // ===== NEW: Chat History Functions =====
-  const autoSaveAssistantMessage = async (message: Message) => {
-    if (chatHistory.currentSessionId) {
+  const autoSaveAssistantMessage = async (
+    sessionId: string,
+    message: Message
+  ) => {
+    if (sessionId) {
       try {
-        await chatHistory.saveMessage(chatHistory.currentSessionId, {
+        await chatHistory.saveMessage(sessionId, {
           role: "assistant",
           content: message.content,
           config: message.config,
@@ -583,18 +675,31 @@ export function AIConfigAssistant({
     try {
       const session = await chatHistory.loadSession(sessionId);
       if (session) {
+        console.log("📂 Loaded session:", session);
+        console.log("📝 Messages in session:", session.messages);
+
         // Convert to Message format
         const loadedMessages: Message[] = session.messages.map((msg: any) => ({
           role: msg.role as "user" | "assistant",
           content: msg.content,
           config: msg.config,
-          timestamp: msg.timestamp,
+          timestamp:
+            typeof msg.timestamp === "string"
+              ? new Date(msg.timestamp)
+              : msg.timestamp,
           isTyping: false,
         }));
+
+        console.log("✅ Converted messages:", loadedMessages);
 
         setMessages(loadedMessages);
         setCurrentSessionTitle(session.title);
         setShowHistoryDialog(false);
+
+        // บันทึก session ที่เปิดลง localStorage
+        const storageKey = `lastChatSession_${tenantId}_${dashboardId}`;
+        localStorage.setItem(storageKey, sessionId);
+
         toast.success(`โหลด "${session.title}" แล้ว`);
       }
     } catch (error) {
@@ -605,7 +710,10 @@ export function AIConfigAssistant({
 
   const handleNewChat = async () => {
     try {
-      await chatHistory.createNewSession("New Dashboard Chat");
+      setIsLoadingSession(true); // แสดง loading
+      const sessionId = await chatHistory.createNewSession(
+        "New Dashboard Chat"
+      );
       setCurrentSessionTitle("New Chat");
       setMessages([
         {
@@ -615,9 +723,16 @@ export function AIConfigAssistant({
           isTyping: false,
         },
       ]);
+
+      // บันทึก session ใหม่ลง localStorage
+      const storageKey = `lastChatSession_${tenantId}_${dashboardId}`;
+      localStorage.setItem(storageKey, sessionId);
+
+      setIsLoadingSession(false); // ปิด loading
       toast.success("เริ่ม Chat ใหม่แล้ว!");
     } catch (error) {
       console.error("Failed to create new session:", error);
+      setIsLoadingSession(false); // ปิด loading แม้ error
       toast.error("ไม่สามารถสร้าง Chat ใหม่ได้");
     }
   };
@@ -715,89 +830,86 @@ export function AIConfigAssistant({
   return (
     <>
       <Card className="h-full flex flex-col">
-        <CardHeader className="border-b">
+        <CardHeader className="border-b py-2 px-3">
           <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-purple-600" />
-              AI Config Assistant
+            <CardTitle className="flex items-center gap-1.5 text-base">
+              <Sparkles className="h-4 w-4 text-purple-600" />
+              AI Assistant
               {currentConfig?.widgets?.length > 0 && (
-                <Badge variant="outline" className="text-xs">
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                   {currentConfig.widgets.length} widget
                   {currentConfig.widgets.length !== 1 ? "s" : ""}
                 </Badge>
               )}
-              {currentSessionTitle && (
-                <Badge variant="secondary" className="text-xs">
-                  {currentSessionTitle}
-                </Badge>
-              )}
             </CardTitle>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               {/* Chat History Menu */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    <History className="h-4 w-4 mr-2" />
-                    History
+                  <Button variant="ghost" size="sm" className="h-7 px-2">
+                    <History className="h-3.5 w-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuItem onClick={handleNewChat}>
-                    <Save className="h-4 w-4 mr-2" />
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={handleNewChat} className="text-xs">
+                    <Save className="h-3.5 w-3.5 mr-2" />
                     New Chat
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleSaveCurrentSession}>
-                    <Save className="h-4 w-4 mr-2" />
+                  <DropdownMenuItem
+                    onClick={handleSaveCurrentSession}
+                    className="text-xs"
+                  >
+                    <Save className="h-3.5 w-3.5 mr-2" />
                     Save Current
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setShowHistoryDialog(true)}>
-                    <FolderOpen className="h-4 w-4 mr-2" />
+                  <DropdownMenuItem
+                    onClick={() => setShowHistoryDialog(true)}
+                    className="text-xs"
+                  >
+                    <FolderOpen className="h-3.5 w-3.5 mr-2" />
                     Load Session
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleExportSession}>
-                    <Download className="h-4 w-4 mr-2" />
+                  <DropdownMenuItem
+                    onClick={handleExportSession}
+                    className="text-xs"
+                  >
+                    <Download className="h-3.5 w-3.5 mr-2" />
                     Export
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleImportSession}>
-                    <Upload className="h-4 w-4 mr-2" />
+                  <DropdownMenuItem
+                    onClick={handleImportSession}
+                    className="text-xs"
+                  >
+                    <Upload className="h-3.5 w-3.5 mr-2" />
                     Import
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              {/* Model Selection */}
+              {/* Model Selection - Compact */}
               <Select value={selectedModel} onValueChange={setSelectedModel}>
-                <SelectTrigger className="w-[280px] h-9">
-                  <Settings className="h-4 w-4 mr-2" />
+                <SelectTrigger className="w-[140px] h-7 text-xs">
+                  <Settings className="h-3.5 w-3.5 mr-1.5" />
                   <SelectValue>
-                    <div className="flex flex-col items-start">
-                      <span className="text-sm">
-                        {models.find((m) => m.id === selectedModel)?.name ||
-                          selectedModel}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {
-                          models.find((m) => m.id === selectedModel)
-                            ?.description
-                        }
-                      </span>
-                    </div>
+                    {models
+                      .find((m) => m.id === selectedModel)
+                      ?.name.replace("Gemini ", "") || selectedModel}
                   </SelectValue>
                 </SelectTrigger>
-                <SelectContent className="w-[350px]">
+                <SelectContent className="w-[280px]">
                   {models.map((model) => (
                     <SelectItem
                       key={model.id}
                       value={model.id}
-                      className="py-3"
+                      className="py-2"
                     >
-                      <div className="flex items-start justify-between gap-3 w-full">
+                      <div className="flex items-start justify-between gap-2 w-full">
                         <div className="flex flex-col min-w-0 flex-1">
-                          <span className="font-medium text-sm">
+                          <span className="font-medium text-xs">
                             {model.name}
                           </span>
-                          <span className="text-xs text-muted-foreground">
+                          <span className="text-[10px] text-muted-foreground">
                             {model.description}
                           </span>
                         </div>
@@ -809,7 +921,7 @@ export function AIConfigAssistant({
                               ? "secondary"
                               : "outline"
                           }
-                          className="text-xs shrink-0 ml-2"
+                          className="text-[9px] shrink-0 ml-1 px-1 py-0"
                         >
                           {model.badge}
                         </Badge>
@@ -824,195 +936,207 @@ export function AIConfigAssistant({
 
         <CardContent className="flex-1 flex flex-col p-0 overflow-hidden">
           {/* Messages Area */}
-          <ScrollArea className="flex-1 p-4" ref={scrollRef}>
-            <div className="space-y-4">
-              {messages.map((message, index) => (
-                <div
-                  key={index}
-                  className={`flex ${
-                    message.role === "user" ? "justify-end" : "justify-start"
-                  }`}
-                >
+          <ScrollArea className="flex-1 p-3" ref={scrollRef}>
+            {/* ⭐ Loading Indicator */}
+            {isLoadingSession ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2 text-purple-600" />
+                  <p className="text-sm text-gray-600">
+                    Loading chat history...
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {messages.map((message, index) => (
                   <div
-                    className={`max-w-[85%] rounded-lg p-3 ${
-                      message.role === "user"
-                        ? "bg-blue-600 text-white"
-                        : "bg-gray-100 text-gray-900"
+                    key={index}
+                    className={`flex ${
+                      message.role === "user" ? "justify-end" : "justify-start"
                     }`}
                   >
-                    {/* Message Content with Markdown */}
-                    <div className="text-sm prose prose-sm max-w-none">
-                      {message.isTyping && index === typingMessageIndex ? (
-                        <>
-                          {displayedContent}
-                          <span className="inline-block w-1 h-4 bg-current ml-0.5 animate-pulse" />
-                        </>
-                      ) : (
-                        <ReactMarkdown
-                          components={{
-                            // Inline code (for colors)
-                            code: ({ className, children, ...props }) => {
-                              // Check if this is inline code by looking at className
-                              const isInline =
-                                !className?.includes("language-");
-                              return isInline ? (
-                                <code
-                                  className="px-1.5 py-0.5 rounded text-xs font-mono bg-gray-800 text-white"
+                    <div
+                      className={`max-w-[80%] rounded-lg p-2.5 ${
+                        message.role === "user"
+                          ? "bg-blue-600 text-white text-sm"
+                          : "bg-gray-100 text-gray-900 text-sm"
+                      }`}
+                    >
+                      {/* Message Content with Markdown */}
+                      <div className="text-sm prose prose-sm max-w-none">
+                        {message.isTyping && index === typingMessageIndex ? (
+                          <>
+                            {displayedContent}
+                            <span className="inline-block w-1 h-4 bg-current ml-0.5 animate-pulse" />
+                          </>
+                        ) : (
+                          <ReactMarkdown
+                            components={{
+                              // Inline code (for colors)
+                              code: ({ className, children, ...props }) => {
+                                // Check if this is inline code by looking at className
+                                const isInline =
+                                  !className?.includes("language-");
+                                return isInline ? (
+                                  <code
+                                    className="px-1.5 py-0.5 rounded text-xs font-mono bg-gray-800 text-white"
+                                    {...props}
+                                  >
+                                    {children}
+                                  </code>
+                                ) : (
+                                  <code
+                                    className="block px-2 py-1 rounded text-xs font-mono bg-gray-800 text-white overflow-x-auto"
+                                    {...props}
+                                  >
+                                    {children}
+                                  </code>
+                                );
+                              },
+                              // Bold text
+                              strong: ({ children, ...props }) => (
+                                <strong className="font-bold" {...props}>
+                                  {children}
+                                </strong>
+                              ),
+                              // Lists
+                              ul: ({ children, ...props }) => (
+                                <ul
+                                  className="list-disc ml-4 space-y-1"
                                   {...props}
                                 >
                                   {children}
-                                </code>
-                              ) : (
-                                <code
-                                  className="block px-2 py-1 rounded text-xs font-mono bg-gray-800 text-white overflow-x-auto"
-                                  {...props}
-                                >
+                                </ul>
+                              ),
+                              li: ({ children, ...props }) => (
+                                <li className="text-sm" {...props}>
                                   {children}
-                                </code>
-                              );
-                            },
-                            // Bold text
-                            strong: ({ children, ...props }) => (
-                              <strong className="font-bold" {...props}>
-                                {children}
-                              </strong>
-                            ),
-                            // Lists
-                            ul: ({ children, ...props }) => (
-                              <ul
-                                className="list-disc ml-4 space-y-1"
-                                {...props}
-                              >
-                                {children}
-                              </ul>
-                            ),
-                            li: ({ children, ...props }) => (
-                              <li className="text-sm" {...props}>
-                                {children}
-                              </li>
-                            ),
-                          }}
-                        >
-                          {message.content}
-                        </ReactMarkdown>
-                      )}
-                    </div>
-
-                    {/* Show suggestion badge if config is available */}
-                    {message.config && !message.isTyping && (
-                      <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">
-                        <p className="font-semibold text-blue-900 mb-1 flex items-center gap-2">
-                          <Sparkles className="h-4 w-4" />
-                          AI Configuration Ready
-                        </p>
-                        <p className="text-blue-700 text-xs">
-                          {currentConfig
-                            ? "Check the diff view in the editor to review changes →"
-                            : "This configuration has been generated and can be applied →"}
-                        </p>
+                                </li>
+                              ),
+                            }}
+                          >
+                            {message.content}
+                          </ReactMarkdown>
+                        )}
                       </div>
-                    )}
 
-                    {/* Show suggestions if available */}
-                    {message.suggestions &&
-                      message.suggestions.length > 0 &&
-                      !message.isTyping && (
-                        <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-                          <p className="font-semibold text-green-900 mb-2 flex items-center gap-2">
-                            <Lightbulb className="h-4 w-4" />
-                            คำแนะนำถัดไป / Next Suggestions
+                      {/* Show suggestion badge if config is available */}
+                      {message.config && !message.isTyping && (
+                        <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">
+                          <p className="font-semibold text-blue-900 mb-1 flex items-center gap-2">
+                            <Sparkles className="h-4 w-4" />
+                            AI Configuration Ready
                           </p>
-                          <div className="space-y-1">
-                            {message.suggestions.map((suggestion, idx) => (
-                              <button
-                                key={idx}
-                                onClick={() => {
-                                  // Special handling for column suggestion
-                                  if (
-                                    suggestion.includes("Available Columns") &&
-                                    tableSchema?.columns
-                                  ) {
-                                    handleShowColumnsToAI();
-                                  } else {
-                                    setInput(suggestion);
-                                  }
-                                }}
-                                className="block w-full text-left text-xs text-green-700 hover:text-green-900 hover:bg-green-100 p-2 rounded border border-green-200 hover:border-green-300 transition-colors"
-                              >
-                                💡 {suggestion}
-                              </button>
-                            ))}
-
-                            {/* Show columns button if no table schema and it's the first conversation */}
-                            {!tableSchema &&
-                              tableSchema?.columns?.length === 0 &&
-                              messages.length <= 2 && (
-                                <button
-                                  onClick={handleShowColumnsToAI}
-                                  className="block w-full text-left text-xs bg-blue-100 text-blue-700 hover:text-blue-900 hover:bg-blue-200 p-2 rounded border border-blue-200 hover:border-blue-300 transition-colors font-medium"
-                                >
-                                  🔍 แสดง Columns ให้ AI ดู (Auto-send columns
-                                  info)
-                                </button>
-                              )}
-                          </div>
+                          <p className="text-blue-700 text-xs">
+                            {currentConfig
+                              ? "Check the diff view in the editor to review changes →"
+                              : "This configuration has been generated and can be applied →"}
+                          </p>
                         </div>
                       )}
 
-                    <div className="text-xs opacity-70 mt-1">
-                      {message.timestamp.toLocaleTimeString()}
+                      {/* Show suggestions if available */}
+                      {message.suggestions &&
+                        message.suggestions.length > 0 &&
+                        !message.isTyping && (
+                          <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                            <p className="font-semibold text-green-900 mb-2 flex items-center gap-2">
+                              <Lightbulb className="h-4 w-4" />
+                              คำแนะนำถัดไป / Next Suggestions
+                            </p>
+                            <div className="space-y-1">
+                              {message.suggestions.map((suggestion, idx) => (
+                                <button
+                                  key={idx}
+                                  onClick={() => {
+                                    // Special handling for column suggestion
+                                    if (
+                                      suggestion.includes(
+                                        "Available Columns"
+                                      ) &&
+                                      tableSchema?.columns
+                                    ) {
+                                      handleShowColumnsToAI();
+                                    } else {
+                                      setInput(suggestion);
+                                    }
+                                  }}
+                                  className="block w-full text-left text-xs text-green-700 hover:text-green-900 hover:bg-green-100 p-2 rounded border border-green-200 hover:border-green-300 transition-colors"
+                                >
+                                  💡 {suggestion}
+                                </button>
+                              ))}
+
+                              {/* Show columns button if no table schema and it's the first conversation */}
+                              {!tableSchema &&
+                                tableSchema?.columns?.length === 0 &&
+                                messages.length <= 2 && (
+                                  <button
+                                    onClick={handleShowColumnsToAI}
+                                    className="block w-full text-left text-xs bg-blue-100 text-blue-700 hover:text-blue-900 hover:bg-blue-200 p-2 rounded border border-blue-200 hover:border-blue-300 transition-colors font-medium"
+                                  >
+                                    🔍 แสดง Columns ให้ AI ดู (Auto-send columns
+                                    info)
+                                  </button>
+                                )}
+                            </div>
+                          </div>
+                        )}
+
+                      <div className="text-[10px] opacity-60 mt-1">
+                        {message.timestamp.toLocaleTimeString("th-TH", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-              {/* Typing indicator while loading */}
-              {isLoading && (
-                <div className="flex justify-start">
-                  <div className="bg-gray-100 rounded-lg p-3">
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <div className="flex gap-1">
-                        <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
-                        <span
-                          className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                          style={{ animationDelay: "0.1s" }}
-                        />
-                        <span
-                          className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                          style={{ animationDelay: "0.2s" }}
-                        />
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="font-medium">
+                ))}
+                {/* Typing indicator while loading */}
+                {isLoading && (
+                  <div className="flex justify-start">
+                    <div className="bg-gray-100 rounded-lg p-2">
+                      <div className="flex items-center gap-2 text-xs text-gray-600">
+                        <div className="flex gap-1">
+                          <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" />
+                          <span
+                            className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
+                            style={{ animationDelay: "0.1s" }}
+                          />
+                          <span
+                            className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
+                            style={{ animationDelay: "0.2s" }}
+                          />
+                        </div>
+                        <span className="text-xs">
                           {loadingStatus || "กำลังคิด..."}
                         </span>
-                        <span className="text-xs text-gray-500">
-                          AI กำลังประมวลผล
-                        </span>
                       </div>
                     </div>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </ScrollArea>
 
           {/* Suggestions */}
-          {messages.length === 1 && !isLoading && (
-            <div className="px-4 pb-2">
-              <div className="flex items-center gap-2 mb-2 text-sm text-gray-600">
-                <Lightbulb className="h-4 w-4" />
-                <span className="font-medium">💡 ลองถามแบบนี้:</span>
+          {!isLoadingSession && messages.length === 1 && !isLoading && (
+            <div className="px-3 pb-2">
+              <div className="flex items-center gap-1.5 mb-1.5 text-xs text-gray-600">
+                <Lightbulb className="h-3 w-3" />
+                <span className="font-medium">ลองถาม:</span>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {suggestions.map((suggestion, index) => (
+              <div className="flex flex-col gap-1.5">
+                {suggestions.slice(0, 3).map((suggestion, index) => (
                   <Button
                     key={index}
                     size="sm"
                     variant="outline"
                     onClick={() => handleSuggestionClick(suggestion)}
-                    className="text-xs"
+                    className="text-[11px] h-auto py-1.5 justify-start text-left"
                   >
-                    {suggestion}
+                    💡 {suggestion}
                   </Button>
                 ))}
               </div>
@@ -1020,7 +1144,7 @@ export function AIConfigAssistant({
           )}
 
           {/* Input Area */}
-          <div className="border-t p-4">
+          <div className="border-t p-3">
             <div className="flex gap-2 items-end">
               <Textarea
                 value={input}
@@ -1034,9 +1158,9 @@ export function AIConfigAssistant({
                     return;
                   }
                 }}
-                placeholder="บอกมาเลยว่าอยากสร้างอะไร... (Thai or English)&#10;กด Shift+Enter เพื่อขึ้นบรรทัดใหม่"
+                placeholder="บอกมาเลยว่าอยากสร้างอะไร..."
                 disabled={isLoading}
-                className="flex-1 resize-none min-h-[60px] max-h-[120px]"
+                className="flex-1 resize-none min-h-[50px] max-h-[100px] text-sm"
                 rows={2}
               />
               <Button
@@ -1077,34 +1201,58 @@ export function AIConfigAssistant({
                   No chat history yet
                 </div>
               ) : (
-                chatHistory.sessions.map((session) => (
-                  <div
-                    key={session.id}
-                    className="flex items-center gap-2 p-3 border rounded-lg hover:bg-gray-50"
-                  >
-                    <Button
-                      variant="ghost"
-                      className="flex-1 justify-start text-left h-auto p-2"
-                      onClick={() => handleLoadSession(session.id)}
+                chatHistory.sessions.map((session) => {
+                  // เช็คว่าเป็น active session หรือไม่
+                  const storageKey = `lastChatSession_${tenantId}_${dashboardId}`;
+                  const activeSessionId = localStorage.getItem(storageKey);
+                  const isActive = session.id === activeSessionId;
+
+                  return (
+                    <div
+                      key={session.id}
+                      className={`flex items-center gap-2 p-3 border rounded-lg ${
+                        isActive
+                          ? "bg-blue-50 border-blue-300"
+                          : "hover:bg-gray-50"
+                      }`}
                     >
-                      <div className="flex flex-col items-start">
-                        <span className="font-medium">{session.title}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {session.messages.length} messages •{" "}
-                          {session.updatedAt.toLocaleString()}
-                        </span>
-                      </div>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      onClick={() => setDeleteSessionId(session.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))
+                      <Button
+                        variant="ghost"
+                        className="flex-1 justify-start text-left h-auto p-2"
+                        onClick={() => handleLoadSession(session.id)}
+                      >
+                        <div className="flex flex-col items-start w-full">
+                          <div className="flex items-center gap-2 w-full">
+                            <span
+                              className={`font-medium ${
+                                isActive ? "text-blue-700" : ""
+                              }`}
+                            >
+                              {session.title}
+                            </span>
+                            {isActive && (
+                              <Badge variant="default" className="text-xs">
+                                Active
+                              </Badge>
+                            )}
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {session.messages.length} messages •{" "}
+                            {new Date(session.updatedAt).toLocaleString()}
+                          </span>
+                        </div>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => setDeleteSessionId(session.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  );
+                })
               )}
             </div>
           </ScrollArea>
