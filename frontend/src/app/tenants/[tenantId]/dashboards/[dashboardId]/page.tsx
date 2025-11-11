@@ -150,13 +150,12 @@ export default function DashboardDetailPage() {
     }
   };
 
-  const handleDataSourceDialogClose = async (saved: boolean) => {
+  const handleDataSourceDialogClose = async () => {
     setCreateDataSourceOpen(false);
     setEditDataSourceId("");
 
-    if (saved) {
-      await loadData();
-    }
+    // Always reload data when dialog closes (table selection might have changed)
+    await loadData();
   };
 
   const handlePublishDashboard = async () => {
@@ -526,7 +525,7 @@ export default function DashboardDetailPage() {
         open={createDataSourceOpen}
         onOpenChange={(open) => {
           if (!open) {
-            handleDataSourceDialogClose(false);
+            handleDataSourceDialogClose();
           }
         }}
       >
