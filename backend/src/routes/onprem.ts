@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Router } from "express";
 import { z } from "zod";
-import { db } from "../index";
+import { db } from "../index.js";
 
 export const onpremRouter = Router();
 

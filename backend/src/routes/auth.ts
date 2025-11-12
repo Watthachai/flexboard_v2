@@ -2,8 +2,8 @@
 import { Router } from "express";
 import admin from "firebase-admin";
 import { z } from "zod";
-import { db } from "../index";
-import { authenticateUser, validateBody } from "../middleware/auth";
+import { db } from "../index.js";
+import { authenticateUser, validateBody } from "../middleware/auth.js";
 
 export const authRouter = Router();
 

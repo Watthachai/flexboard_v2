@@ -3,8 +3,8 @@ import { Router } from "express";
 import { z } from "zod";
 import crypto from "crypto";
 import admin from "firebase-admin";
-import { db } from "../index";
-import { authenticateUser } from "../middleware/auth";
+import { db } from "../index.js";
+import { authenticateUser } from "../middleware/auth.js";
 
 export const apiKeysRouter = Router({ mergeParams: true });
 

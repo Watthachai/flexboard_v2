@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Router } from "express";
 import { z } from "zod";
-import { db } from "../index";
+import { db } from "../index.js";
 import {
   authenticateUser,
   requireTenant,
   validateBody,
-} from "../middleware/auth";
+} from "../middleware/auth.js";
 
 export const dashboardsRouter = Router();
 

@@ -1,13 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Router } from "express";
 import { z } from "zod";
-import { db } from "../index";
+import { db } from "../index.js";
 import {
   authenticateUser,
   requireTenant,
   validateBody,
-} from "../middleware/auth";
-import { testDatabaseConnection } from "../utils/database-connectors";
+} from "../middleware/auth.js";
+import { testDatabaseConnection } from "../utils/database-connectors.js";
 
 export const dataSourcesRouter = Router();
 

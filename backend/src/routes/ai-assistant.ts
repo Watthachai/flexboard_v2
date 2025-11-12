@@ -1,6 +1,6 @@
 import express from "express";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { executeQuery } from "../utils/database-connectors";
+import { executeQuery } from "../utils/database-connectors.js";
 
 const router = express.Router();
 

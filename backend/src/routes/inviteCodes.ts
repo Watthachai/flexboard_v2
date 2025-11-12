@@ -1,7 +1,7 @@
 import express from "express";
 import { z } from "zod";
-import { db } from "../index";
-import { authenticateUser, requireAdmin } from "../middleware/auth";
+import { db } from "../index.js";
+import { authenticateUser, requireAdmin } from "../middleware/auth.js";
 import admin from "firebase-admin";
 
 const router = express.Router();

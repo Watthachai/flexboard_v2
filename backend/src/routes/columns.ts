@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
-import { authenticateUser } from "../middleware/auth";
-import { getDatabaseConnector } from "../utils/database-connectors";
+import { authenticateUser } from "../middleware/auth.js";
+import { getDatabaseConnector } from "../utils/database-connectors.js";
 import { db } from "..";
 
 const router = Router();
