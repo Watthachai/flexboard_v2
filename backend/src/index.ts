@@ -141,7 +141,7 @@ app.use(
       // FlexBoard Production
       "https://admin.fittflexb.com",
       "https://app.fittflexb.com",
-      
+
       // FlexBoard Staging
       "https://admin-staging.fittflexb.com",
       "https://app-staging.fittflexb.com",
