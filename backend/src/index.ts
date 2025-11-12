@@ -32,10 +32,13 @@ console.log(
   `🤖 Gemini API Key: ${process.env.GEMINI_API_KEY ? "✅ Set" : "❌ Not Set"}`
 );
 
+// Parse service account for reuse
+let serviceAccount: any = null;
+
 // Initialize Firebase Admin
 if (process.env[serviceAccountEnvKey]) {
   // Use environment-specific service account
-  const serviceAccount = JSON.parse(process.env[serviceAccountEnvKey]);
+  serviceAccount = JSON.parse(process.env[serviceAccountEnvKey]);
 
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
@@ -81,10 +84,20 @@ export const getFirestore = (): Firestore => {
   if (databaseId && databaseId !== "(default)") {
     console.log(`📊 Using Firestore database: ${databaseId}`);
     // Create Firestore instance with specific database
-    return new Firestore({
-      projectId: admin.app().options.projectId,
-      databaseId: databaseId,
-    });
+    if (serviceAccount) {
+      // Use the service account credentials
+      return new Firestore({
+        projectId: admin.app().options.projectId,
+        databaseId: databaseId,
+        credentials: serviceAccount,
+      });
+    } else {
+      // Fallback to using projectId only (will use application default credentials)
+      return new Firestore({
+        projectId: admin.app().options.projectId,
+        databaseId: databaseId,
+      });
+    }
   }
   return admin.firestore();
 };

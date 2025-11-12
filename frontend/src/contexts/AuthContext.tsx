@@ -46,6 +46,9 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Super Admin email list (fallback if claims not set yet)
+const SUPER_ADMIN_EMAILS = ["wattchaichai@gmail.com"];
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,20 +58,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
-      
+
       if (currentUser) {
         // Force refresh token to get latest custom claims
         const idTokenResult = await currentUser.getIdTokenResult(true);
         const claims = idTokenResult.claims;
-        
+
+        console.log("🔐 User claims:", claims);
+        console.log("📧 User email:", currentUser.email);
+
         // Check custom claims set by backend
-        setIsSuperAdmin(claims.isSuperAdmin === true);
-        setIsAdmin(claims.isAdmin === true || claims.isSuperAdmin === true);
+        const hasClaimsAdmin =
+          claims.isAdmin === true || claims.isSuperAdmin === true;
+        const isEmailSuperAdmin = SUPER_ADMIN_EMAILS.includes(
+          currentUser.email || ""
+        );
+
+        // Fallback: If no claims but email is in super admin list, grant access
+        setIsSuperAdmin(claims.isSuperAdmin === true || isEmailSuperAdmin);
+        setIsAdmin(hasClaimsAdmin || isEmailSuperAdmin);
+
+        console.log("✅ isAdmin:", hasClaimsAdmin || isEmailSuperAdmin);
+        console.log(
+          "✅ isSuperAdmin:",
+          claims.isSuperAdmin === true || isEmailSuperAdmin
+        );
       } else {
         setIsAdmin(false);
         setIsSuperAdmin(false);
       }
-      
+
       setLoading(false);
     });
 

@@ -379,6 +379,92 @@ authRouter.get("/list-all-users", authenticateUser, async (req, res) => {
   }
 });
 
+// ===== POST /api/auth/set-custom-claims =====
+// ตั้งค่า Custom Claims สำหรับ User (Super Admin only)
+const SetCustomClaimsSchema = z.object({
+  uid: z.string(),
+  // รองรับทั้ง claims และ customClaims
+  claims: z
+    .object({
+      isAdmin: z.boolean().optional(),
+      isSuperAdmin: z.boolean().optional(),
+      role: z.enum(["admin", "sales", "viewer"]).optional(),
+      tenantId: z.string().optional(),
+    })
+    .optional(),
+  customClaims: z
+    .object({
+      isAdmin: z.boolean().optional(),
+      isSuperAdmin: z.boolean().optional(),
+      role: z.enum(["admin", "sales", "viewer"]).optional(),
+      tenantId: z.string().optional(),
+    })
+    .optional(),
+});
+
+authRouter.post(
+  "/set-custom-claims",
+  authenticateUser,
+  validateBody(SetCustomClaimsSchema),
+  async (req, res) => {
+    try {
+      const currentUser = (req as any).user;
+      // รองรับทั้ง claims และ customClaims
+      const { uid, claims, customClaims } = req.body;
+      const claimsToSet = claims || customClaims;
+
+      console.log("🔍 Set custom claims request:", { uid, claimsToSet });
+      console.log("🔍 Current user:", currentUser);
+
+      if (!claimsToSet) {
+        return res.status(400).json({
+          error: "Either claims or customClaims is required",
+        });
+      }
+
+      // ตรวจสอบว่าเป็น Super Admin
+      const isSuperAdmin =
+        currentUser.isSuperAdmin === true || currentUser.isAdmin === true;
+
+      if (!isSuperAdmin) {
+        return res.status(403).json({
+          error: "Only Super Admin can set custom claims",
+          debug: {
+            isAdmin: currentUser.isAdmin,
+            isSuperAdmin: currentUser.isSuperAdmin,
+          },
+        });
+      }
+
+      // ดึงข้อมูล User ปัจจุบัน
+      const targetUser = await admin.auth().getUser(uid);
+      const currentClaims = targetUser.customClaims || {};
+
+      // Merge claims ใหม่กับ claims เดิม
+      const newClaims = {
+        ...currentClaims,
+        ...claimsToSet,
+      };
+
+      // ตั้งค่า Custom Claims
+      await admin.auth().setCustomUserClaims(uid, newClaims);
+
+      console.log(`✅ Updated claims for ${targetUser.email}:`, newClaims);
+
+      res.json({
+        success: true,
+        message: "Custom claims updated successfully",
+        uid: uid,
+        email: targetUser.email,
+        newClaims: newClaims,
+      });
+    } catch (error: any) {
+      console.error("Error setting custom claims:", error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
 // ===== PATCH /api/auth/update-role =====
 // อัปเดต Role และ TenantId ของ User (เฉพาะ Admin)
 const UpdateRoleSchema = z.object({
