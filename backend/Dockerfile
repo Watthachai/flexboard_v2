@@ -29,8 +29,8 @@ RUN npm ci --only=production
 # Copy built files from builder
 COPY --from=builder /app/dist ./dist
 
-# Copy Firebase service account (if needed)
-COPY flexboard-v2-firebase-adminsdk-fbsvc-fca7f36834.json ./
+# Note: Firebase service account is provided via Secret Manager at runtime
+# See cloudbuild.yaml: --set-secrets FIREBASE_SERVICE_ACCOUNT=...
 
 # Expose port
 EXPOSE 8080
