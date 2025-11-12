@@ -56,20 +56,23 @@ jobs:
       # ==================== PUSH BACKEND ====================
       - name: 📦 Push Backend to Bitbucket
         run: |
-          echo "🚀 Pushing backend to Bitbucket..."
-          git subtree push --prefix=backend bitbucket-backend main || echo "⚠️ Backend push failed (may already be up to date)"
+          BRANCH=${GITHUB_REF#refs/heads/}
+          echo "🚀 Pushing backend (branch: $BRANCH) to Bitbucket..."
+          git subtree push --prefix=backend bitbucket-backend $BRANCH || echo "⚠️ Backend push failed (may already be up to date)"
 
       # ==================== PUSH FRONTEND ====================
       - name: 📦 Push Frontend to Bitbucket
         run: |
-          echo "🚀 Pushing frontend to Bitbucket..."
-          git subtree push --prefix=frontend bitbucket-frontend main || echo "⚠️ Frontend push failed (may already be up to date)"
+          BRANCH=${GITHUB_REF#refs/heads/}
+          echo "🚀 Pushing frontend (branch: $BRANCH) to Bitbucket..."
+          git subtree push --prefix=frontend bitbucket-frontend $BRANCH || echo "⚠️ Frontend push failed (may already be up to date)"
 
       # ==================== PUSH ONPREM ====================
       - name: 📦 Push OnPrem to Bitbucket
         run: |
-          echo "🚀 Pushing onprem-frontend to Bitbucket..."
-          git subtree push --prefix=onprem-frontend bitbucket-onprem main || echo "⚠️ OnPrem push failed (may already be up to date)"
+          BRANCH=${GITHUB_REF#refs/heads/}
+          echo "🚀 Pushing onprem-frontend (branch: $BRANCH) to Bitbucket..."
+          git subtree push --prefix=onprem-frontend bitbucket-onprem $BRANCH || echo "⚠️ OnPrem push failed (may already be up to date)"
 
       # ==================== SUMMARY ====================
       - name: ✅ Summary
