@@ -9,9 +9,12 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - NODE_ENV=production
-      - FIREBASE_PROJECT_ID=flexboard-466304
+      - NODE_ENV=development
+      - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
+      - FIRESTORE_DATABASE_ID=${FIRESTORE_DATABASE_ID:-flexb-staging-db}
       - PORT=8080
+    volumes:
+      - ./backend/flexboard-v2-firebase-adminsdk-fbsvc-fca7f36834.json:/app/flexboard-v2-firebase-adminsdk-fbsvc-fca7f36834.json:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -26,11 +29,11 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - NEXT_PUBLIC_BACKEND_URL=http://localhost:8080
+        - NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL:-http://localhost:8080}
         - NEXT_PUBLIC_FIREBASE_API_KEY=${FIREBASE_API_KEY}
-        - NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=flexboard-466304.firebaseapp.com
-        - NEXT_PUBLIC_FIREBASE_PROJECT_ID=flexboard-466304
-        - NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=flexboard-466304.firebasestorage.app
+        - NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${FIREBASE_AUTH_DOMAIN}
+        - NEXT_PUBLIC_FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
+        - NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${FIREBASE_STORAGE_BUCKET}
         - NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${FIREBASE_MESSAGING_SENDER_ID}
         - NEXT_PUBLIC_FIREBASE_APP_ID=${FIREBASE_APP_ID}
     ports:
@@ -46,11 +49,11 @@ services:
       context: ./onprem-frontend
       dockerfile: Dockerfile
       args:
-        - NEXT_PUBLIC_BACKEND_URL=http://localhost:8080
+        - NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL:-http://localhost:8080}
         - NEXT_PUBLIC_FIREBASE_API_KEY=${FIREBASE_API_KEY}
-        - NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=flexboard-466304.firebaseapp.com
-        - NEXT_PUBLIC_FIREBASE_PROJECT_ID=flexboard-466304
-        - NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=flexboard-466304.firebasestorage.app
+        - NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${FIREBASE_AUTH_DOMAIN}
+        - NEXT_PUBLIC_FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
+        - NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${FIREBASE_STORAGE_BUCKET}
         - NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${FIREBASE_MESSAGING_SENDER_ID}
         - NEXT_PUBLIC_FIREBASE_APP_ID=${FIREBASE_APP_ID}
     ports:

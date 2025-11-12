@@ -43,7 +43,7 @@ steps:
       - 'managed'
       - '--allow-unauthenticated'
       - '--set-env-vars'
-      - 'NODE_ENV=staging,FIREBASE_PROJECT_ID=${_FIREBASE_PROJECT_ID},PORT=8080'
+      - 'NODE_ENV=development,FIREBASE_PROJECT_ID=${_FIREBASE_PROJECT_ID},FIRESTORE_DATABASE_ID=flexb-staging-db,PORT=8080'
       - '--set-secrets'
       - 'SECRET_KEY=FLEXBOARD_SECRET_KEY_STAGING:latest,FIREBASE_SERVICE_ACCOUNT=FLEXBOARD_FIREBASE_SERVICE_ACCOUNT_STAGING:latest'
       - '--max-instances'

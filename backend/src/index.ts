@@ -1,4 +1,5 @@
 import admin from "firebase-admin";
+import { Firestore } from "@google-cloud/firestore";
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -35,6 +36,7 @@ console.log(
 if (process.env[serviceAccountEnvKey]) {
   // Use environment-specific service account
   const serviceAccount = JSON.parse(process.env[serviceAccountEnvKey]);
+
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
     projectId: serviceAccount.project_id,
@@ -43,6 +45,7 @@ if (process.env[serviceAccountEnvKey]) {
 } else if (process.env.FIREBASE_SERVICE_ACCOUNT) {
   // Fallback to legacy FIREBASE_SERVICE_ACCOUNT
   const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
   });
@@ -54,6 +57,7 @@ if (process.env[serviceAccountEnvKey]) {
       __dirname,
       "../flexboard-v2-firebase-adminsdk-fbsvc-fca7f36834.json"
     ));
+
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
     });
@@ -69,8 +73,28 @@ if (process.env[serviceAccountEnvKey]) {
   }
 }
 
-// Export Firestore instance
-export const db = admin.firestore();
+// Export Firestore instance with specific database
+const databaseId = process.env.FIRESTORE_DATABASE_ID;
+
+// Helper function to get the correct Firestore instance
+export const getFirestore = (): Firestore => {
+  if (databaseId && databaseId !== "(default)") {
+    console.log(`📊 Using Firestore database: ${databaseId}`);
+    // Create Firestore instance with specific database
+    return new Firestore({
+      projectId: admin.app().options.projectId,
+      databaseId: databaseId,
+    });
+  }
+  return admin.firestore();
+};
+
+// Export default db instance (for backward compatibility)
+export const db = getFirestore();
+
+console.log(
+  `📊 Firestore configured for database: ${databaseId || "(default)"}`
+);
 
 // ===== Import Routes =====
 import { authRouter } from "./routes/auth";
