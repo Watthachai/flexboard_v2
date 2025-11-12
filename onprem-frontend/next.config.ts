@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "export",
+  output: "standalone", // ✅ Changed from "export" for Docker deployment
   reactCompiler: true,
   allowedDevOrigins: ["172.168.1.135"],
   images: {

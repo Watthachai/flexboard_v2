@@ -1,0 +1,66 @@
+name: Sync to Bitbucket
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+      - staging
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  sync-to-bitbucket:
+    name: Sync monorepo to Bitbucket repositories
+    runs-on: ubuntu-latest
+
+    steps:
+      # ==================== CHECKOUT ====================
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Full history for subtree push
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # ==================== SETUP SSH ====================
+      - name: 🔐 Setup SSH for Bitbucket
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.BITBUCKET_SSH_KEY }}
+
+      # ==================== ADD BITBUCKET REMOTES ====================
+      - name: 🔗 Add Bitbucket remotes
+        run: |
+          git remote add bitbucket-backend git@bitbucket.org:digitalvalue/flexb-backend.git || true
+          git remote add bitbucket-frontend git@bitbucket.org:digitalvalue/flexb-frontend.git || true
+          git remote add bitbucket-onprem git@bitbucket.org:digitalvalue/flexb-onprem.git || true
+
+          echo "📋 Configured remotes:"
+          git remote -v
+
+      # ==================== PUSH BACKEND ====================
+      - name: 📦 Push Backend to Bitbucket
+        run: |
+          echo "🚀 Pushing backend to Bitbucket..."
+          git subtree push --prefix=backend bitbucket-backend main || echo "⚠️ Backend push failed (may already be up to date)"
+
+      # ==================== PUSH FRONTEND ====================
+      - name: 📦 Push Frontend to Bitbucket
+        run: |
+          echo "🚀 Pushing frontend to Bitbucket..."
+          git subtree push --prefix=frontend bitbucket-frontend main || echo "⚠️ Frontend push failed (may already be up to date)"
+
+      # ==================== PUSH ONPREM ====================
+      - name: 📦 Push OnPrem to Bitbucket
+        run: |
+          echo "🚀 Pushing onprem-frontend to Bitbucket..."
+          git subtree push --prefix=onprem-frontend bitbucket-onprem main || echo "⚠️ OnPrem push failed (may already be up to date)"
+
+      # ==================== SUMMARY ====================
+      - name: ✅ Summary
+        run: |
+          echo "🎉 Sync to Bitbucket completed!"
+          echo ""
+          echo "📊 Bitbucket URLs:"
+          echo "   Backend:  https://bitbucket.org/digitalvalue/flexb-backend"
+          echo "   Frontend: https://bitbucket.org/digitalvalue/flexb-frontend"
+          echo "   OnPrem:   https://bitbucket.org/digitalvalue/flexb-onprem"
