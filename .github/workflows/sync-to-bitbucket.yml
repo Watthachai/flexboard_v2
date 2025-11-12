@@ -27,6 +27,13 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.BITBUCKET_SSH_KEY }}
 
+      # ==================== ADD BITBUCKET TO KNOWN_HOSTS ====================
+      - name: 🔑 Add Bitbucket to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -t rsa,ed25519 bitbucket.org >> ~/.ssh/known_hosts
+          echo "✅ Bitbucket host key added to known_hosts"
+
       # ==================== ADD BITBUCKET REMOTES ====================
       - name: 🔗 Add Bitbucket remotes
         run: |
