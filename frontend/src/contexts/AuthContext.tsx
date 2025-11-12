@@ -38,6 +38,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
   signInWithGoogle: () => Promise<void>;
   signInWithMicrosoft: () => Promise<void>;
   logout: () => Promise<void>;
@@ -49,13 +50,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
-
-  const ADMIN_EMAIL = "wattchaichai@gmail.com";
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
-      setIsAdmin(currentUser?.email === ADMIN_EMAIL);
+      
+      if (currentUser) {
+        // Force refresh token to get latest custom claims
+        const idTokenResult = await currentUser.getIdTokenResult(true);
+        const claims = idTokenResult.claims;
+        
+        // Check custom claims set by backend
+        setIsSuperAdmin(claims.isSuperAdmin === true);
+        setIsAdmin(claims.isAdmin === true || claims.isSuperAdmin === true);
+      } else {
+        setIsAdmin(false);
+        setIsSuperAdmin(false);
+      }
+      
       setLoading(false);
     });
 
@@ -98,6 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         loading,
         isAdmin,
+        isSuperAdmin,
         signInWithGoogle,
         signInWithMicrosoft,
         logout,

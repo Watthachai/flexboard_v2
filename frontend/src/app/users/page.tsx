@@ -41,7 +41,12 @@ import { MoreHorizontal } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
-import { getAllUsers, updateUserRole, removeUserFromTenant } from "@/lib/api";
+import {
+  getAllUsers,
+  updateUserRole,
+  removeUserFromTenant,
+  updateUserClaims,
+} from "@/lib/api";
 
 // --- Type Definitions ---
 type User = {
@@ -78,6 +83,7 @@ const UserManagementPage = ({ onLogout }: { onLogout: () => void }) => {
   // Dialog states
   const [isRoleDialogOpen, setIsRoleDialogOpen] = useState(false);
   const [isRemoveDialogOpen, setIsRemoveDialogOpen] = useState(false);
+  const [isActivateDialogOpen, setIsActivateDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [newRole, setNewRole] = useState<string>("");
 
@@ -174,6 +180,29 @@ const UserManagementPage = ({ onLogout }: { onLogout: () => void }) => {
       toast.error(err.message);
     } finally {
       setIsRemoveDialogOpen(false);
+      setSelectedUser(null);
+    }
+  };
+
+  const handleOpenActivateDialog = (user: User) => {
+    setSelectedUser(user);
+    setIsActivateDialogOpen(true);
+  };
+
+  const handleActivateAdmin = async () => {
+    if (!selectedUser) return;
+
+    try {
+      await updateUserClaims(selectedUser.uid, {
+        isAdmin: true,
+        role: "admin",
+      });
+      toast.success(`User ${selectedUser.email} activated as Admin`);
+      fetchUsers(); // Refresh list
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setIsActivateDialogOpen(false);
       setSelectedUser(null);
     }
   };
@@ -354,6 +383,14 @@ const UserManagementPage = ({ onLogout }: { onLogout: () => void }) => {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
+                                {!user.role && (
+                                  <DropdownMenuItem
+                                    onClick={() => handleOpenActivateDialog(user)}
+                                    className="text-green-600 font-semibold"
+                                  >
+                                    ✅ Activate as Admin
+                                  </DropdownMenuItem>
+                                )}
                                 <DropdownMenuItem
                                   onClick={() => handleOpenRoleDialog(user)}
                                 >
@@ -432,6 +469,27 @@ const UserManagementPage = ({ onLogout }: { onLogout: () => void }) => {
             </DialogClose>
             <Button variant="destructive" onClick={handleRemoveUser}>
               Confirm Removal
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Activate Admin Dialog */}
+      <Dialog open={isActivateDialogOpen} onOpenChange={setIsActivateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Activate User as Admin</DialogTitle>
+            <DialogDescription>
+              This will grant <span className="font-bold">{selectedUser?.email}</span> full admin access to the dashboard.
+              They will be able to manage tenants, users, and all system settings.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancel</Button>
+            </DialogClose>
+            <Button variant="default" className="bg-green-600 hover:bg-green-700" onClick={handleActivateAdmin}>
+              Activate as Admin
             </Button>
           </DialogFooter>
         </DialogContent>
