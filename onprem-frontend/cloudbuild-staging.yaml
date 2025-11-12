@@ -27,8 +27,8 @@ steps:
       - '-t'
       - 'gcr.io/$PROJECT_ID/flexboard-onprem-staging:latest'
       - '-f'
-      - 'onprem-frontend/Dockerfile'
-      - 'onprem-frontend'
+      - 'Dockerfile'
+      - '.'
 
   # ==================== PUSH IMAGE ====================
   - name: 'gcr.io/cloud-builders/docker'
