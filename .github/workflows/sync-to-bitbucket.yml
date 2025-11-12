@@ -34,12 +34,21 @@ jobs:
           ssh-keyscan -t rsa,ed25519 bitbucket.org >> ~/.ssh/known_hosts
           echo "✅ Bitbucket host key added to known_hosts"
 
+      # ==================== TEST SSH CONNECTION ====================
+      - name: 🧪 Test SSH connection to Bitbucket
+        run: |
+          echo "Testing SSH connection to Bitbucket..."
+          ssh -T git@bitbucket.org || true
+          echo ""
+          echo "SSH key fingerprint:"
+          ssh-add -l
+
       # ==================== ADD BITBUCKET REMOTES ====================
       - name: 🔗 Add Bitbucket remotes
         run: |
-          git remote add bitbucket-backend git@bitbucket.org:digitalvalue/flexb-backend.git || true
-          git remote add bitbucket-frontend git@bitbucket.org:digitalvalue/flexb-frontend.git || true
-          git remote add bitbucket-onprem git@bitbucket.org:digitalvalue/flexb-onprem.git || true
+          git remote add bitbucket-backend git@bitbucket.org:digitalvalueth/flexb-backend.git || true
+          git remote add bitbucket-frontend git@bitbucket.org:digitalvalueth/flexb-frontend.git || true
+          git remote add bitbucket-onprem git@bitbucket.org:digitalvalueth/flexb-onprem.git || true
 
           echo "📋 Configured remotes:"
           git remote -v
