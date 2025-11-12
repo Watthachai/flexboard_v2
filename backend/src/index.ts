@@ -138,10 +138,17 @@ app.use(
       "http://localhost:9002",
       "http://localhost:3000",
 
-      // Production Frontend
-      //"https://nappaint.fittsystem.com",
-      // Staging Frontend
-      //"https://sandbox-nappaint.fittsystem.com",
+      // FlexBoard Production
+      "https://admin.fittflexb.com",
+      "https://app.fittflexb.com",
+      
+      // FlexBoard Staging
+      "https://admin-staging.fittflexb.com",
+      "https://app-staging.fittflexb.com",
+
+      // Cloud Run default URLs (for testing)
+      /flexboard-admin-(staging|prod)-.*\.run\.app$/,
+      /flexboard-onprem-(staging|prod)-.*\.run\.app$/,
     ],
     credentials: true,
   })
