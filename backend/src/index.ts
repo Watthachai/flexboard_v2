@@ -97,18 +97,18 @@ console.log(
 );
 
 // ===== Import Routes =====
-import { authRouter } from "./routes/auth";
-import inviteCodesRouter from "./routes/inviteCodes";
-import configRouter from "./routes/config";
-import { tenantsRouter } from "./routes/tanents"; // Fixed: Import tenantsRouter
-import { dashboardsRouter } from "./routes/dashboards";
-import { dataSourcesRouter } from "./routes/datasources";
-import columnsRouter from "./routes/columns";
-import adminUIRouter from "./routes/adminUIReact"; // ใช้ React version
-import { onpremRouter } from "./routes/onprem"; // OnPrem API routes
-import { apiKeysRouter } from "./routes/apiKeys"; // API Keys management
-import aiAssistantRouter from "./routes/ai-assistant"; // AI Assistant routes
-import chatHistoryRouter from "./routes/chat-history"; // Chat History routes
+import { authRouter } from "./routes/auth.js";
+import inviteCodesRouter from "./routes/inviteCodes.js";
+import configRouter from "./routes/config.js";
+import { tenantsRouter } from "./routes/tanents.js"; // Fixed: Import tenantsRouter
+import { dashboardsRouter } from "./routes/dashboards.js";
+import { dataSourcesRouter } from "./routes/datasources.js";
+import columnsRouter from "./routes/columns.js";
+import adminUIRouter from "./routes/adminUIReact.js"; // ใช้ React version
+import { onpremRouter } from "./routes/onprem.js"; // OnPrem API routes
+import { apiKeysRouter } from "./routes/apiKeys.js"; // API Keys management
+import aiAssistantRouter from "./routes/ai-assistant.js"; // AI Assistant routes
+import chatHistoryRouter from "./routes/chat-history.js"; // Chat History routes
 
 // ===== Express App =====
 const app = express();
