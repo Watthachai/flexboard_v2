@@ -3,6 +3,16 @@
 # Includes Firebase Admin SDK and database connectors
 
 steps:
+  # ==================== DEPLOY FIRESTORE INDEXES (STAGING) ====================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-firestore-indexes-staging'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud firestore indexes create --database=flexb-staging-db --quiet < firestore.indexes.json || true
+    waitFor: ['-']
+
   # ==================== BUILD BACKEND (STAGING) ====================
   - name: 'gcr.io/cloud-builders/docker'
     id: 'build-backend-staging'
@@ -45,7 +55,7 @@ steps:
       - '--set-env-vars'
       - 'NODE_ENV=development,FIREBASE_PROJECT_ID=${_FIREBASE_PROJECT_ID},FIRESTORE_DATABASE_ID=flexb-staging-db'
       - '--set-secrets'
-      - 'SECRET_KEY=FLEXBOARD_SECRET_KEY_STAGING:latest,FIREBASE_SERVICE_ACCOUNT=FLEXBOARD_FIREBASE_SERVICE_ACCOUNT_STAGING:latest'
+      - 'SECRET_KEY=FLEXBOARD_SECRET_KEY_STAGING:latest,FIREBASE_SERVICE_ACCOUNT=FLEXBOARD_FIREBASE_SERVICE_ACCOUNT_STAGING:latest,GEMINI_API_KEY=FLEXBOARD_GEMINI_API_KEY:latest'
       - '--max-instances'
       - '1'
       - '--min-instances'

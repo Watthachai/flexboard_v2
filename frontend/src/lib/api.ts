@@ -452,6 +452,8 @@ export async function createDataSource(
     connection: any;
     status?: string;
     availableTables?: string[];
+    mockMode?: boolean;
+    mockDataId?: string;
   }
 ): Promise<any> {
   return fetcher(`/api/tenants/${tenantId}/datasources`, {
@@ -473,6 +475,8 @@ export async function updateDataSource(
     status?: string;
     availableTables?: string[];
     selectedTable?: string;
+    mockMode?: boolean;
+    mockDataId?: string;
   }
 ): Promise<any> {
   return fetcher(`/api/tenants/${tenantId}/datasources/${dataSourceId}`, {
@@ -646,6 +650,113 @@ export async function deleteApiKey(
   keyId: string
 ): Promise<{ success: boolean }> {
   return fetcher(`/api/tenants/${tenantId}/api-keys/${keyId}`, {
+    method: "DELETE",
+  });
+}
+
+// ============================================
+// Mock Data APIs
+// ============================================
+
+export interface MockDataset {
+  id: string;
+  name: string;
+  description?: string;
+  tableName: string;
+  rowCount: number;
+  columns: string[];
+  fileType: "sql" | "json";
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Get all mock datasets for a tenant
+ */
+export async function getMockData(tenantId: string): Promise<MockDataset[]> {
+  return fetcher(`/api/tenants/${tenantId}/mockdata`);
+}
+
+/**
+ * Upload mock data from SQL or JSON file
+ */
+export async function uploadMockData(
+  tenantId: string,
+  data: {
+    name: string;
+    description?: string;
+    fileType: "sql" | "json";
+    content: string;
+  }
+): Promise<MockDataset> {
+  // Transform to match backend schema
+  const payload = {
+    format: data.fileType, // backend expects 'format' not 'fileType'
+    data: data.content, // backend expects 'data' not 'content'
+    tableName: data.name,
+    description: data.description,
+  };
+
+  return fetcher(`/api/tenants/${tenantId}/mockdata`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * Get specific mock dataset
+ */
+export async function getMockDataById(
+  tenantId: string,
+  mockDataId: string
+): Promise<MockDataset> {
+  return fetcher(`/api/tenants/${tenantId}/mockdata/${mockDataId}`);
+}
+
+/**
+ * Preview mock data (first N rows)
+ */
+export async function previewMockData(
+  tenantId: string,
+  mockDataId: string,
+  limit: number = 10
+): Promise<{
+  columns: string[];
+  rows: any[];
+  totalRows: number;
+}> {
+  return fetcher(`/api/tenants/${tenantId}/mockdata/${mockDataId}/query`, {
+    method: "POST",
+    body: JSON.stringify({ query: `SELECT * LIMIT ${limit}` }),
+  });
+}
+
+/**
+ * Execute query on mock data
+ */
+export async function queryMockData(
+  tenantId: string,
+  mockDataId: string,
+  query: string
+): Promise<{
+  columns: string[];
+  rows: any[];
+  totalRows: number;
+}> {
+  return fetcher(`/api/tenants/${tenantId}/mockdata/${mockDataId}/query`, {
+    method: "POST",
+    body: JSON.stringify({ query }),
+  });
+}
+
+/**
+ * Delete mock dataset
+ */
+export async function deleteMockData(
+  tenantId: string,
+  mockDataId: string
+): Promise<{ success: boolean }> {
+  return fetcher(`/api/tenants/${tenantId}/mockdata/${mockDataId}`, {
     method: "DELETE",
   });
 }
