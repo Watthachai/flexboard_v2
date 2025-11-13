@@ -565,17 +565,19 @@ const UserManagementPage = ({ onLogout }: { onLogout: () => void }) => {
               <span className="font-bold">{selectedUser?.email}</span>{" "}
               <span className="text-purple-600 font-bold">Super Admin</span>{" "}
               privileges. Super Admins can:
-              <ul className="list-disc pl-6 mt-2 space-y-1">
-                <li>Access all tenants without being assigned to one</li>
-                <li>Manage all users across the system</li>
-                <li>Create and delete tenants</li>
-                <li>Override all permission checks</li>
-              </ul>
-              <p className="mt-3 text-red-600 font-semibold">
-                ⚠️ This is the highest level of access. Use with caution!
-              </p>
             </DialogDescription>
           </DialogHeader>
+          <div className="py-2">
+            <ul className="list-disc pl-6 space-y-1 text-sm text-gray-600">
+              <li>Access all tenants without being assigned to one</li>
+              <li>Manage all users across the system</li>
+              <li>Create and delete tenants</li>
+              <li>Override all permission checks</li>
+            </ul>
+            <p className="mt-3 text-red-600 font-semibold text-sm">
+              ⚠️ This is the highest level of access. Use with caution!
+            </p>
+          </div>
           <DialogFooter>
             <DialogClose asChild>
               <Button variant="outline">Cancel</Button>
