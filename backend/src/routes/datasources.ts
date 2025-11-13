@@ -93,7 +93,7 @@ dataSourcesRouter.get("/:tenantId/datasources", async (req: any, res: any) => {
     const user = req.user;
 
     // Verify user has access (Super Admin can access any tenant)
-    if (!user.isSuperAdmin && user.tenantId !== tenantId) {
+    if (user.isSuperAdmin !== true && user.tenantId !== tenantId) {
       return res
         .status(403)
         .json({ error: "Access denied to this tenant's data sources" });
@@ -142,7 +142,7 @@ dataSourcesRouter.get(
       const user = req.user;
 
       // Verify user has access (Super Admin can access any tenant)
-      if (!user.isSuperAdmin && user.tenantId !== tenantId) {
+      if (user.isSuperAdmin !== true && user.tenantId !== tenantId) {
         return res.status(403).json({ error: "Access denied" });
       }
 
@@ -181,7 +181,7 @@ dataSourcesRouter.post(
       const user = req.user;
 
       // Verify user has access (Super Admin can access any tenant)
-      if (!user.isSuperAdmin && user.tenantId !== tenantId) {
+      if (user.isSuperAdmin !== true && user.tenantId !== tenantId) {
         return res.status(403).json({ error: "Access denied" });
       }
 
@@ -227,7 +227,7 @@ dataSourcesRouter.put(
       const user = req.user;
 
       // Verify user has access (Super Admin can access any tenant)
-      if (!user.isSuperAdmin && user.tenantId !== tenantId) {
+      if (user.isSuperAdmin !== true && user.tenantId !== tenantId) {
         return res.status(403).json({ error: "Access denied" });
       }
 
@@ -299,7 +299,7 @@ dataSourcesRouter.delete(
       const user = req.user;
 
       // Verify user has access (Super Admin can access any tenant)
-      if (!user.isSuperAdmin && user.tenantId !== tenantId) {
+      if (user.isSuperAdmin !== true && user.tenantId !== tenantId) {
         return res.status(403).json({ error: "Access denied" });
       }
 
@@ -345,7 +345,7 @@ dataSourcesRouter.post(
       const user = req.user;
 
       // Verify user has access (Super Admin can access any tenant)
-      if (!user.isSuperAdmin && user.tenantId !== tenantId) {
+      if (user.isSuperAdmin !== true && user.tenantId !== tenantId) {
         return res.status(403).json({ error: "Access denied" });
       }
 
@@ -401,7 +401,7 @@ dataSourcesRouter.get(
       const user = req.user;
 
       // Verify user has access (Super Admin can access any tenant)
-      if (!user.isSuperAdmin && user.tenantId !== tenantId) {
+      if (user.isSuperAdmin !== true && user.tenantId !== tenantId) {
         return res.status(403).json({ error: "Access denied" });
       }
 
@@ -443,7 +443,7 @@ dataSourcesRouter.post(
       const user = req.user;
 
       // Verify user has access (Super Admin can access any tenant)
-      if (!user.isSuperAdmin && user.tenantId !== tenantId) {
+      if (user.isSuperAdmin !== true && user.tenantId !== tenantId) {
         return res.status(403).json({ error: "Access denied" });
       }
 
@@ -493,7 +493,7 @@ dataSourcesRouter.post(
       const user = req.user;
 
       // Verify user has access (Super Admin can access any tenant)
-      if (!user.isSuperAdmin && user.tenantId !== tenantId) {
+      if (user.isSuperAdmin !== true && user.tenantId !== tenantId) {
         return res.status(403).json({ error: "Access denied" });
       }
 
@@ -560,7 +560,7 @@ dataSourcesRouter.get(
       const user = req.user;
 
       // Verify user has access
-      if (!user.isSuperAdmin && user.tenantId !== tenantId) {
+      if (user.isSuperAdmin !== true && user.tenantId !== tenantId) {
         return res.status(403).json({ error: "Access denied" });
       }
 

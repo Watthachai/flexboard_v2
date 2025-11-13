@@ -56,6 +56,7 @@ type User = {
   photoURL?: string;
   tenantId?: string;
   role?: "admin" | "sales" | "viewer" | string; // Allow other roles
+  isSuperAdmin?: boolean;
   metadata: {
     lastSignInTime?: string;
     creationTime?: string;
@@ -84,6 +85,7 @@ const UserManagementPage = ({ onLogout }: { onLogout: () => void }) => {
   const [isRoleDialogOpen, setIsRoleDialogOpen] = useState(false);
   const [isRemoveDialogOpen, setIsRemoveDialogOpen] = useState(false);
   const [isActivateDialogOpen, setIsActivateDialogOpen] = useState(false);
+  const [isSuperAdminDialogOpen, setIsSuperAdminDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [newRole, setNewRole] = useState<string>("");
 
@@ -203,6 +205,30 @@ const UserManagementPage = ({ onLogout }: { onLogout: () => void }) => {
       toast.error(err.message);
     } finally {
       setIsActivateDialogOpen(false);
+      setSelectedUser(null);
+    }
+  };
+
+  const handleOpenSuperAdminDialog = (user: User) => {
+    setSelectedUser(user);
+    setIsSuperAdminDialogOpen(true);
+  };
+
+  const handleToggleSuperAdmin = async () => {
+    if (!selectedUser) return;
+
+    try {
+      await updateUserClaims(selectedUser.uid, {
+        isSuperAdmin: true,
+        isAdmin: true,
+        role: "admin",
+      });
+      toast.success(`User ${selectedUser.email} is now a Super Admin`);
+      fetchUsers(); // Refresh list
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setIsSuperAdminDialogOpen(false);
       setSelectedUser(null);
     }
   };
@@ -336,7 +362,7 @@ const UserManagementPage = ({ onLogout }: { onLogout: () => void }) => {
                       filteredUsers.map((user) => (
                         <TableRow key={user.uid}>
                           <TableCell>
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2">
                               <Avatar>
                                 <AvatarImage src={user.photoURL} />
                                 <AvatarFallback>
@@ -344,9 +370,19 @@ const UserManagementPage = ({ onLogout }: { onLogout: () => void }) => {
                                 </AvatarFallback>
                               </Avatar>
                               <div>
-                                <p className="font-medium">
-                                  {user.displayName || "N/A"}
-                                </p>
+                                <div className="flex items-center gap-2">
+                                  <p className="font-medium">
+                                    {user.displayName || "N/A"}
+                                  </p>
+                                  {user.isSuperAdmin && (
+                                    <Badge
+                                      variant="default"
+                                      className="bg-purple-600 hover:bg-purple-700"
+                                    >
+                                      ⭐ Super Admin
+                                    </Badge>
+                                  )}
+                                </div>
                                 <p className="text-sm text-gray-500">
                                   {user.email}
                                 </p>
@@ -385,10 +421,22 @@ const UserManagementPage = ({ onLogout }: { onLogout: () => void }) => {
                               <DropdownMenuContent align="end">
                                 {!user.role && (
                                   <DropdownMenuItem
-                                    onClick={() => handleOpenActivateDialog(user)}
+                                    onClick={() =>
+                                      handleOpenActivateDialog(user)
+                                    }
                                     className="text-green-600 font-semibold"
                                   >
                                     ✅ Activate as Admin
+                                  </DropdownMenuItem>
+                                )}
+                                {!user.isSuperAdmin && (
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      handleOpenSuperAdminDialog(user)
+                                    }
+                                    className="text-purple-600 font-semibold"
+                                  >
+                                    ⭐ Make Super Admin
                                   </DropdownMenuItem>
                                 )}
                                 <DropdownMenuItem
@@ -475,21 +523,69 @@ const UserManagementPage = ({ onLogout }: { onLogout: () => void }) => {
       </Dialog>
 
       {/* Activate Admin Dialog */}
-      <Dialog open={isActivateDialogOpen} onOpenChange={setIsActivateDialogOpen}>
+      <Dialog
+        open={isActivateDialogOpen}
+        onOpenChange={setIsActivateDialogOpen}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Activate User as Admin</DialogTitle>
             <DialogDescription>
-              This will grant <span className="font-bold">{selectedUser?.email}</span> full admin access to the dashboard.
-              They will be able to manage tenants, users, and all system settings.
+              This will grant{" "}
+              <span className="font-bold">{selectedUser?.email}</span> full
+              admin access to the dashboard. They will be able to manage
+              tenants, users, and all system settings.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <DialogClose asChild>
               <Button variant="outline">Cancel</Button>
             </DialogClose>
-            <Button variant="default" className="bg-green-600 hover:bg-green-700" onClick={handleActivateAdmin}>
+            <Button
+              variant="default"
+              className="bg-green-600 hover:bg-green-700"
+              onClick={handleActivateAdmin}
+            >
               Activate as Admin
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Make Super Admin Dialog */}
+      <Dialog
+        open={isSuperAdminDialogOpen}
+        onOpenChange={setIsSuperAdminDialogOpen}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>⭐ Make Super Admin</DialogTitle>
+            <DialogDescription>
+              This will grant{" "}
+              <span className="font-bold">{selectedUser?.email}</span>{" "}
+              <span className="text-purple-600 font-bold">Super Admin</span>{" "}
+              privileges. Super Admins can:
+              <ul className="list-disc pl-6 mt-2 space-y-1">
+                <li>Access all tenants without being assigned to one</li>
+                <li>Manage all users across the system</li>
+                <li>Create and delete tenants</li>
+                <li>Override all permission checks</li>
+              </ul>
+              <p className="mt-3 text-red-600 font-semibold">
+                ⚠️ This is the highest level of access. Use with caution!
+              </p>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancel</Button>
+            </DialogClose>
+            <Button
+              variant="default"
+              className="bg-purple-600 hover:bg-purple-700"
+              onClick={handleToggleSuperAdmin}
+            >
+              Confirm Super Admin
             </Button>
           </DialogFooter>
         </DialogContent>

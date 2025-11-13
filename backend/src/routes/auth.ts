@@ -370,6 +370,8 @@ authRouter.get("/list-all-users", authenticateUser, async (req, res) => {
       customClaims: user.customClaims || {},
       tenantId: user.customClaims?.tenantId || null,
       role: user.customClaims?.role || null,
+      isSuperAdmin: user.customClaims?.isSuperAdmin || false,
+      isAdmin: user.customClaims?.isAdmin || false,
     }));
 
     res.json({ users });

@@ -16,7 +16,7 @@ apiKeysRouter.get("/", authenticateUser, async (req: any, res) => {
     const user = req.user;
 
     // Check if user has access to this tenant
-    if (user.tenantId !== tenantId && !user.isSuperAdmin) {
+    if (user.tenantId !== tenantId && user.isSuperAdmin !== true) {
       return res.status(403).json({
         error: "You don't have access to this tenant",
       });
@@ -72,13 +72,13 @@ apiKeysRouter.post("/", authenticateUser, async (req: any, res) => {
       CreateApiKeySchema.parse(req.body);
 
     // Check if user is admin of this tenant
-    if (user.tenantId !== tenantId && !user.isSuperAdmin) {
+    if (user.tenantId !== tenantId && user.isSuperAdmin !== true) {
       return res.status(403).json({
         error: "You don't have permission to create API keys",
       });
     }
 
-    if (user.role !== "admin" && !user.isSuperAdmin) {
+    if (user.role !== "admin" && user.isSuperAdmin !== true) {
       return res.status(403).json({
         error: "Only admins can create API keys",
       });
@@ -144,13 +144,13 @@ apiKeysRouter.patch("/:keyId", authenticateUser, async (req: any, res) => {
     const { isActive } = UpdateApiKeySchema.parse(req.body);
 
     // Check permissions
-    if (user.tenantId !== tenantId && !user.isSuperAdmin) {
+    if (user.tenantId !== tenantId && user.isSuperAdmin !== true) {
       return res.status(403).json({
         error: "You don't have permission to update API keys",
       });
     }
 
-    if (user.role !== "admin" && !user.isSuperAdmin) {
+    if (user.role !== "admin" && user.isSuperAdmin !== true) {
       return res.status(403).json({
         error: "Only admins can update API keys",
       });
@@ -190,13 +190,13 @@ apiKeysRouter.delete("/:keyId", authenticateUser, async (req: any, res) => {
     const user = req.user;
 
     // Check permissions
-    if (user.tenantId !== tenantId && !user.isSuperAdmin) {
+    if (user.tenantId !== tenantId && user.isSuperAdmin !== true) {
       return res.status(403).json({
         error: "You don't have permission to delete API keys",
       });
     }
 
-    if (user.role !== "admin" && !user.isSuperAdmin) {
+    if (user.role !== "admin" && user.isSuperAdmin !== true) {
       return res.status(403).json({
         error: "Only admins can delete API keys",
       });
