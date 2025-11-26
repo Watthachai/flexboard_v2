@@ -32,10 +32,14 @@ console.log(
   `🤖 Gemini API Key: ${process.env.GEMINI_API_KEY ? "✅ Set" : "❌ Not Set"}`
 );
 
+// Store service account for Firestore with custom database
+let serviceAccountCredentials: Record<string, unknown> | null = null;
+
 // Initialize Firebase Admin
 if (process.env[serviceAccountEnvKey]) {
   // Use environment-specific service account
   const serviceAccount = JSON.parse(process.env[serviceAccountEnvKey]);
+  serviceAccountCredentials = serviceAccount;
 
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
@@ -45,6 +49,7 @@ if (process.env[serviceAccountEnvKey]) {
 } else if (process.env.FIREBASE_SERVICE_ACCOUNT) {
   // Fallback to legacy FIREBASE_SERVICE_ACCOUNT
   const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+  serviceAccountCredentials = serviceAccount;
 
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
@@ -57,6 +62,7 @@ if (process.env[serviceAccountEnvKey]) {
       __dirname,
       "../flexboard-v2-firebase-adminsdk-fbsvc-fca7f36834.json"
     ));
+    serviceAccountCredentials = serviceAccount;
 
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
@@ -80,10 +86,14 @@ const databaseId = process.env.FIRESTORE_DATABASE_ID;
 export const getFirestore = (): Firestore => {
   if (databaseId && databaseId !== "(default)") {
     console.log(`📊 Using Firestore database: ${databaseId}`);
-    // Create Firestore instance with specific database
+    // Create Firestore instance with specific database and credentials
     return new Firestore({
       projectId: admin.app().options.projectId,
       databaseId: databaseId,
+      credentials: serviceAccountCredentials as {
+        client_email?: string;
+        private_key?: string;
+      },
     });
   }
   return admin.firestore();
