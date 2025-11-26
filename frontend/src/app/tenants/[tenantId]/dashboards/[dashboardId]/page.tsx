@@ -39,6 +39,7 @@ import {
   getDataSources,
   updateDashboard,
   activateDashboardVersion,
+  executeDataSourceQuery,
 } from "@/lib/api";
 import { Dashboard, DashboardVersion, DataSource } from "@/types/dashboard";
 import { toast } from "sonner";
@@ -49,6 +50,10 @@ import { VersionsTab } from "./components/VersionsTab";
 import { SettingsTab } from "./components/SettingsTab";
 import { DataSourceDialog } from "./components/DataSourceDialog";
 import WidgetRenderer from "@/components/widgets/WidgetRenderer";
+import GlobalFilters, {
+  GlobalFilter,
+  GlobalFilterValues,
+} from "@/components/dashboard/GlobalFilters";
 
 export default function DashboardDetailPage() {
   const params = useParams();
@@ -67,6 +72,13 @@ export default function DashboardDetailPage() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewConfig, setPreviewConfig] = useState<any>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
+
+  // Global Filter states for Preview
+  const [globalFilterValues, setGlobalFilterValues] =
+    useState<GlobalFilterValues>({});
+  const [dynamicFilterOptions, setDynamicFilterOptions] = useState<{
+    [field: string]: string[];
+  }>({});
 
   // Version tracking states
   const [isViewingCurrent, setIsViewingCurrent] = useState(true);
@@ -235,6 +247,50 @@ export default function DashboardDetailPage() {
       );
 
       setPreviewConfig(versionWithConfig.config);
+
+      // Reset global filter values when preview opens
+      setGlobalFilterValues({});
+
+      // Fetch dynamic options for filters if needed
+      const config = versionWithConfig.config;
+      if (config?.filters && dashboard?.dataSourceId) {
+        const dynamicFilters = config.filters.filter(
+          (f: any) => f.options === "dynamic"
+        );
+
+        if (dynamicFilters.length > 0) {
+          try {
+            const optionsPromises = dynamicFilters.map(async (filter: any) => {
+              // Fetch unique values for each dynamic filter field
+              const query = `SELECT DISTINCT ${filter.field} FROM ${
+                config.widgets?.[0]?.dataConfig?.table || "mock"
+              } WHERE ${filter.field} IS NOT NULL ORDER BY ${filter.field}`;
+
+              const result = await executeDataSourceQuery(
+                tenantId,
+                dashboard.dataSourceId!,
+                query,
+                1000
+              );
+
+              const values = (result.data || result || [])
+                .map((row: any) => row[filter.field])
+                .filter((v: any) => v != null);
+
+              return { field: filter.field, values };
+            });
+
+            const results = await Promise.all(optionsPromises);
+            const newOptions: { [field: string]: string[] } = {};
+            results.forEach(({ field, values }) => {
+              newOptions[field] = values;
+            });
+            setDynamicFilterOptions(newOptions);
+          } catch (err) {
+            console.error("Error fetching dynamic filter options:", err);
+          }
+        }
+      }
     } catch (error: any) {
       console.error("Error loading preview:", error);
       toast.error(error.message || "Failed to load preview");
@@ -648,33 +704,115 @@ export default function DashboardDetailPage() {
                 </div>
               </div>
             ) : (
-              <div
-                className="grid gap-4"
-                style={{
-                  gridTemplateColumns: `repeat(${
-                    previewConfig.gridCols || 12
-                  }, 1fr)`,
-                  gridAutoRows: `${previewConfig.gridRowHeight || 100}px`,
-                }}
-              >
-                {previewConfig.widgets
-                  ?.filter((widget: any) => widget.visible !== false)
-                  .map((widget: any) => (
-                    <div
-                      key={widget.id}
-                      className="min-h-[200px]"
-                      style={{
-                        gridColumn: `span ${widget.position?.w || 4}`,
-                        gridRow: `span ${widget.position?.h || 4}`,
-                      }}
-                    >
-                      <WidgetRenderer
-                        widget={widget}
-                        tenantId={tenantId}
-                        dataSourceId={dashboard?.dataSourceId || ""}
-                      />
-                    </div>
-                  ))}
+              <div>
+                {/* Global Filters */}
+                {previewConfig.filters && previewConfig.filters.length > 0 && (
+                  <GlobalFilters
+                    filters={previewConfig.filters as GlobalFilter[]}
+                    values={globalFilterValues}
+                    onChange={setGlobalFilterValues}
+                    dynamicOptions={dynamicFilterOptions}
+                    onReset={() => setGlobalFilterValues({})}
+                  />
+                )}
+
+                {/* Widgets Grid */}
+                <div
+                  className="grid gap-4"
+                  style={{
+                    gridTemplateColumns: `repeat(${
+                      previewConfig.gridCols || 12
+                    }, 1fr)`,
+                    gridAutoRows: `${previewConfig.gridRowHeight || 100}px`,
+                  }}
+                >
+                  {previewConfig.widgets
+                    ?.filter((widget: any) => widget.visible !== false)
+                    .map((widget: any) => {
+                      // Convert globalFilterValues to filter conditions
+                      const filterConditions = (
+                        previewConfig.filters || []
+                      ).flatMap((filter: GlobalFilter) => {
+                        const value = globalFilterValues[filter.id];
+                        if (
+                          value === undefined ||
+                          value === null ||
+                          value === "" ||
+                          value === "__ALL__"
+                        ) {
+                          return [];
+                        }
+
+                        if (filter.type === "dateRange") {
+                          const conditions = [];
+                          if (value.start) {
+                            conditions.push({
+                              field: filter.field,
+                              operator: ">=",
+                              value: value.start,
+                            });
+                          }
+                          if (value.end) {
+                            conditions.push({
+                              field: filter.field,
+                              operator: "<=",
+                              value: value.end,
+                            });
+                          }
+                          return conditions;
+                        }
+
+                        if (filter.type === "multiSelect") {
+                          if (Array.isArray(value) && value.length > 0) {
+                            return [
+                              {
+                                field: filter.field,
+                                operator: "IN",
+                                value: value,
+                              },
+                            ];
+                          }
+                          return [];
+                        }
+
+                        if (filter.type === "text") {
+                          return [
+                            {
+                              field: filter.field,
+                              operator: "LIKE",
+                              value: value,
+                            },
+                          ];
+                        }
+
+                        return [
+                          {
+                            field: filter.field,
+                            operator: "=",
+                            value: value,
+                          },
+                        ];
+                      });
+
+                      return (
+                        <div
+                          key={widget.id}
+                          className="min-h-[200px]"
+                          style={{
+                            gridColumn: `span ${widget.position?.w || 4}`,
+                            gridRow: `span ${widget.position?.h || 4}`,
+                          }}
+                        >
+                          <WidgetRenderer
+                            widget={widget}
+                            tenantId={tenantId}
+                            dataSourceId={dashboard?.dataSourceId || ""}
+                            globalFilters={filterConditions}
+                          />
+                        </div>
+                      );
+                    })}
+                </div>
               </div>
             )}
           </div>

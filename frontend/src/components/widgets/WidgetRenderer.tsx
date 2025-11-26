@@ -18,16 +18,24 @@ import ProgressBarWidget from "./ProgressBarWidget";
 import MetricCardWidget from "./MetricCardWidget";
 import ScatterPlotWidget from "./ScatterPlotWidget";
 
+export interface GlobalFilterCondition {
+  field: string;
+  operator: string;
+  value: any;
+}
+
 interface WidgetRendererProps {
   widget: any;
   tenantId: string;
   dataSourceId: string;
+  globalFilters?: GlobalFilterCondition[];
 }
 
 export default function WidgetRenderer({
   widget,
   tenantId,
   dataSourceId,
+  globalFilters = [],
 }: WidgetRendererProps) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -135,9 +143,12 @@ export default function WidgetRenderer({
           const topClause = shouldLimit ? `TOP ${limit} ` : "";
           query = `SELECT ${topClause}${selectClause} FROM ${table}`;
 
+          // Combine widget filters and global filters
+          const allFilters = [...(filters || []), ...globalFilters];
+
           // Add WHERE clause for filters
-          if (filters && filters.length > 0) {
-            const whereConditions = filters.map((filter: any) => {
+          if (allFilters.length > 0) {
+            const whereConditions = allFilters.map((filter: any) => {
               if (filter.operator === "IN") {
                 const values = Array.isArray(filter.value)
                   ? filter.value.map((v: any) => `'${v}'`).join(",")
@@ -225,7 +236,7 @@ export default function WidgetRenderer({
     }
 
     fetchData();
-  }, [tenantId, dataSourceId, widget.id, widget.dataConfig]);
+  }, [tenantId, dataSourceId, widget.id, widget.dataConfig, globalFilters]);
 
   // Loading state
   if (loading) {
