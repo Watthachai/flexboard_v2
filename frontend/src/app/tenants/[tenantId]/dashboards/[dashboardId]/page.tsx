@@ -498,7 +498,7 @@ export default function DashboardDetailPage() {
             dashboardId={dashboardId}
             onUpdate={loadData}
             onVersionChange={handleVersionChange}
-            onGoToSettings={() => setActiveTab("settings")}
+            onSwitchToSettings={() => setActiveTab("settings")}
           />
         </TabsContent>
 
