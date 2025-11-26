@@ -43,18 +43,10 @@ export default function WidgetRenderer({
 
   useEffect(() => {
     async function fetchData() {
-      //console.log("WidgetRenderer Debug:", {
-      //widgetId: widget.id,
-      //widgetTitle: widget.title,
-      //hasDataSourceId: !!dataSourceId,
-      //dataSourceId,
-      //hasDataConfig: !!widget.dataConfig,
-      //dataConfig: widget.dataConfig,
-      //hasQuery: !!widget.dataConfig?.query,
-      //query: widget.dataConfig?.query,
-      //hasTable: !!widget.dataConfig?.table,
-      //table: widget.dataConfig?.table,
-      //});
+      console.log(
+        `[${widget.id}] fetchData triggered, globalFilters:`,
+        globalFilters
+      );
 
       if (!dataSourceId || !widget.dataConfig) {
         setLoading(false);
@@ -157,6 +149,17 @@ export default function WidgetRenderer({
               } else if (filter.operator === "LIKE") {
                 return `${filter.field} LIKE '%${filter.value}%'`;
               } else {
+                // Check if value looks like a date (YYYY-MM-DD format)
+                const isDateValue = /^\d{4}-\d{2}-\d{2}$/.test(filter.value);
+                if (isDateValue) {
+                  // For SQL Server datetime comparison, use CAST to date
+                  // Also add time component for end date (<=) to include the whole day
+                  if (filter.operator === "<=") {
+                    return `CAST(${filter.field} AS DATE) ${filter.operator} '${filter.value}'`;
+                  } else {
+                    return `CAST(${filter.field} AS DATE) ${filter.operator} '${filter.value}'`;
+                  }
+                }
                 return `${filter.field} ${filter.operator} '${filter.value}'`;
               }
             });
@@ -210,6 +213,8 @@ export default function WidgetRenderer({
           return;
         }
 
+        console.log(`[${widget.id}] Final Query:`, query);
+
         const result = await executeDataSourceQuery(
           tenantId,
           dataSourceId,
@@ -217,7 +222,10 @@ export default function WidgetRenderer({
           widget.dataConfig.limit
         );
 
-        //console.log("Query Result:", {
+        console.log(
+          `[${widget.id}] Result rows:`,
+          result.data?.length || result?.length || 0
+        );
         //widgetId: widget.id,
         //widgetTitle: widget.title,
         //query,
@@ -236,7 +244,14 @@ export default function WidgetRenderer({
     }
 
     fetchData();
-  }, [tenantId, dataSourceId, widget.id, widget.dataConfig, globalFilters]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    tenantId,
+    dataSourceId,
+    widget.id,
+    JSON.stringify(widget.dataConfig),
+    JSON.stringify(globalFilters),
+  ]);
 
   // Loading state
   if (loading) {

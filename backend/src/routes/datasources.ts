@@ -580,19 +580,30 @@ dataSourcesRouter.post(
         const allData = mockData?.data || [];
         const columns = mockData?.columns || [];
 
-        // Simple query execution on mock data
-        let resultData = [...allData];
+        // Execute query on mock data using executeMockQuery
+        const { executeMockQuery } = await import("./mockdata.js");
+        const startTime = Date.now();
+        let resultData = executeMockQuery(allData, query);
 
-        // Apply LIMIT if specified
-        if (limit) {
+        // Apply additional LIMIT if specified and not already in query
+        if (
+          limit &&
+          !query.toLowerCase().includes("limit") &&
+          !query.toLowerCase().includes("top")
+        ) {
           resultData = resultData.slice(0, limit);
         }
+
+        const executionTime = Date.now() - startTime;
+        console.log(
+          `Mock query executed in ${executionTime}ms, returned ${resultData.length} rows`
+        );
 
         return res.json({
           data: resultData,
           columns: columns,
           rowCount: resultData.length,
-          executionTime: 0,
+          executionTime: executionTime,
         });
       }
 

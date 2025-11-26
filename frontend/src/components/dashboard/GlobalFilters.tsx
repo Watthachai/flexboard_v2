@@ -92,60 +92,108 @@ export default function GlobalFilters({
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
-                  className="h-9 justify-start text-left font-normal text-sm"
+                  className="h-9 justify-start text-left font-normal text-sm min-w-[280px]"
                 >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
                   {currentValue?.start && currentValue?.end ? (
-                    <>
-                      {format(new Date(currentValue.start), "dd MMM yyyy", {
+                    <span className="truncate">
+                      {format(new Date(currentValue.start), "d MMM yyyy", {
                         locale: th,
                       })}{" "}
-                      -{" "}
-                      {format(new Date(currentValue.end), "dd MMM yyyy", {
+                      <span className="text-gray-400 mx-1">→</span>{" "}
+                      {format(new Date(currentValue.end), "d MMM yyyy", {
                         locale: th,
                       })}
-                    </>
+                    </span>
                   ) : (
                     <span className="text-gray-400">เลือกช่วงวันที่</span>
                   )}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  initialFocus
-                  mode="range"
-                  defaultMonth={
-                    currentValue?.start
-                      ? new Date(currentValue.start)
-                      : new Date()
-                  }
-                  selected={{
-                    from: currentValue?.start
-                      ? new Date(currentValue.start)
-                      : undefined,
-                    to: currentValue?.end
-                      ? new Date(currentValue.end)
-                      : undefined,
-                  }}
-                  onSelect={(range: DateRange | undefined) => {
-                    handleFilterChange(filter.id, {
-                      start: range?.from?.toISOString().split("T")[0],
-                      end: range?.to?.toISOString().split("T")[0],
-                    });
-                  }}
-                  numberOfMonths={2}
-                  locale={th}
-                />
+              <PopoverContent className="w-auto p-4" align="start">
+                <div className="space-y-4">
+                  <Calendar
+                    initialFocus
+                    mode="range"
+                    defaultMonth={
+                      currentValue?.start
+                        ? new Date(currentValue.start)
+                        : new Date()
+                    }
+                    selected={{
+                      from: currentValue?.start
+                        ? new Date(currentValue.start)
+                        : undefined,
+                      to: currentValue?.end
+                        ? new Date(currentValue.end)
+                        : undefined,
+                    }}
+                    onSelect={(range: DateRange | undefined) => {
+                      // Format date to YYYY-MM-DD without timezone conversion
+                      const formatLocalDate = (date: Date | undefined) => {
+                        if (!date) return undefined;
+                        const year = date.getFullYear();
+                        const month = String(date.getMonth() + 1).padStart(
+                          2,
+                          "0"
+                        );
+                        const day = String(date.getDate()).padStart(2, "0");
+                        return `${year}-${month}-${day}`;
+                      };
+                      handleFilterChange(filter.id, {
+                        start: formatLocalDate(range?.from),
+                        end: formatLocalDate(range?.to),
+                      });
+                    }}
+                    numberOfMonths={2}
+                    locale={th}
+                    className="rounded-md border-0"
+                    classNames={{
+                      months: "flex flex-col sm:flex-row gap-8 relative",
+                      month: "space-y-4",
+                      caption:
+                        "flex justify-center pt-1 relative items-center text-sm font-medium",
+                      caption_label: "text-sm font-medium",
+                      nav: "absolute left-1/2 -translate-x-1/2 top-1 flex items-center gap-2 z-10",
+                      nav_button:
+                        "h-7 w-7 bg-white p-0 opacity-70 hover:opacity-100 inline-flex items-center justify-center rounded-md border border-input hover:bg-accent hover:text-accent-foreground shadow-sm",
+                      nav_button_previous: "",
+                      nav_button_next: "",
+                      table: "w-full border-collapse",
+                      head_row: "flex",
+                      head_cell:
+                        "text-muted-foreground rounded-md w-9 font-normal text-[0.8rem] text-center",
+                      row: "flex w-full mt-1",
+                      cell: "h-9 w-9 text-center text-sm p-0 relative focus-within:relative focus-within:z-20",
+                      day: "h-9 w-9 p-0 font-normal aria-selected:opacity-100 inline-flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground",
+                      day_range_start:
+                        "day-range-start bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
+                      day_range_end:
+                        "day-range-end bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
+                      day_selected:
+                        "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
+                      day_today: "bg-accent text-accent-foreground",
+                      day_outside:
+                        "day-outside text-muted-foreground opacity-50",
+                      day_disabled: "text-muted-foreground opacity-50",
+                      day_range_middle:
+                        "aria-selected:bg-accent aria-selected:text-accent-foreground",
+                      day_hidden: "invisible",
+                    }}
+                  />
+                </div>
               </PopoverContent>
             </Popover>
           </div>
         );
 
       case "dropdown":
-        const dropdownOptions =
+        const dropdownOptionsRaw =
           filter.options === "dynamic"
             ? dynamicOptions[filter.field] || []
             : filter.options || [];
+        // Remove duplicates
+        const dropdownOptions = [...new Set(dropdownOptionsRaw)];
 
         return (
           <div key={filter.id} className="flex flex-col space-y-1.5">
@@ -168,8 +216,11 @@ export default function GlobalFilters({
                 {filter.allowAll !== false && (
                   <SelectItem value="__ALL__">ทั้งหมด</SelectItem>
                 )}
-                {dropdownOptions.map((option) => (
-                  <SelectItem key={option} value={option}>
+                {dropdownOptions.map((option, index) => (
+                  <SelectItem
+                    key={`${filter.id}-${index}-${option}`}
+                    value={option}
+                  >
                     {option}
                   </SelectItem>
                 ))}
@@ -179,10 +230,12 @@ export default function GlobalFilters({
         );
 
       case "multiSelect":
-        const multiOptions =
+        const multiOptionsRaw =
           filter.options === "dynamic"
             ? dynamicOptions[filter.field] || []
             : filter.options || [];
+        // Remove duplicates
+        const multiOptions = [...new Set(multiOptionsRaw)];
         const selectedValues: string[] = currentValue || [];
 
         return (
@@ -211,9 +264,9 @@ export default function GlobalFilters({
               </PopoverTrigger>
               <PopoverContent className="w-64 p-2" align="start">
                 <div className="space-y-2 max-h-60 overflow-auto">
-                  {multiOptions.map((option) => (
+                  {multiOptions.map((option, index) => (
                     <label
-                      key={option}
+                      key={`${filter.id}-${index}-${option}`}
                       className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-1 rounded"
                     >
                       <input

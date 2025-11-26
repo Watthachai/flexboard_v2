@@ -119,26 +119,229 @@ function parseSQLInserts(sql: string): {
 
 /**
  * Simple SQL query executor for mock data
+ * Supports: SELECT, WHERE (=, >, <, >=, <=, LIKE, IN, AND), GROUP BY, ORDER BY, LIMIT, aggregations
  */
-function executeMockQuery(data: any[], query: string): any[] {
+export function executeMockQuery(data: any[], query: string): any[] {
   const upperQuery = query.toUpperCase();
 
   // SELECT * FROM table
   if (upperQuery.includes("SELECT") && upperQuery.includes("FROM")) {
     let result = [...data];
 
-    // Handle WHERE clause (very basic)
-    const whereMatch = query.match(/WHERE\s+(.+?)(?:ORDER BY|LIMIT|$)/i);
+    // Handle WHERE clause
+    const whereMatch = query.match(
+      /WHERE\s+(.+?)(?:\s+GROUP BY|\s+ORDER BY|\s+LIMIT|$)/i
+    );
     if (whereMatch) {
       const whereClause = whereMatch[1].trim();
 
-      // Simple equality check: column = 'value' or column = value
-      const conditionMatch = whereClause.match(/(\w+)\s*=\s*('.*?'|\d+)/i);
-      if (conditionMatch) {
-        const [, column, value] = conditionMatch;
-        const cleanValue = value.replace(/'/g, "");
-        result = result.filter((row) => String(row[column]) === cleanValue);
+      // Split by AND (simple approach)
+      const conditions = whereClause.split(/\s+AND\s+/i);
+
+      result = result.filter((row) => {
+        return conditions.every((condition) => {
+          // Handle CAST(field AS DATE) comparisons
+          const castMatch = condition.match(
+            /CAST\s*\(\s*(\w+)\s+AS\s+DATE\s*\)\s*(>=|<=|>|<|=)\s*'([^']+)'/i
+          );
+          if (castMatch) {
+            const [, field, operator, value] = castMatch;
+            const rowValue = row[field];
+            if (rowValue === null || rowValue === undefined) return false;
+
+            // Parse date from row (handle various formats)
+            let rowDate: Date;
+            if (rowValue instanceof Date) {
+              rowDate = rowValue;
+            } else {
+              // Try to parse string date
+              rowDate = new Date(rowValue);
+            }
+
+            const filterDate = new Date(value);
+
+            // Compare dates (ignore time)
+            const rowDateOnly = new Date(
+              rowDate.getFullYear(),
+              rowDate.getMonth(),
+              rowDate.getDate()
+            );
+            const filterDateOnly = new Date(
+              filterDate.getFullYear(),
+              filterDate.getMonth(),
+              filterDate.getDate()
+            );
+
+            switch (operator) {
+              case ">=":
+                return rowDateOnly >= filterDateOnly;
+              case "<=":
+                return rowDateOnly <= filterDateOnly;
+              case ">":
+                return rowDateOnly > filterDateOnly;
+              case "<":
+                return rowDateOnly < filterDateOnly;
+              case "=":
+                return rowDateOnly.getTime() === filterDateOnly.getTime();
+              default:
+                return true;
+            }
+          }
+
+          // Handle IN operator
+          const inMatch = condition.match(/(\w+)\s+IN\s*\(([^)]+)\)/i);
+          if (inMatch) {
+            const [, field, valuesList] = inMatch;
+            const values = valuesList
+              .split(",")
+              .map((v) => v.trim().replace(/'/g, ""));
+            return values.includes(String(row[field]));
+          }
+
+          // Handle LIKE operator
+          const likeMatch = condition.match(/(\w+)\s+LIKE\s+'%([^%]+)%'/i);
+          if (likeMatch) {
+            const [, field, value] = likeMatch;
+            return String(row[field] || "")
+              .toLowerCase()
+              .includes(value.toLowerCase());
+          }
+
+          // Handle comparison operators (>=, <=, >, <, =)
+          const compMatch = condition.match(
+            /(\w+)\s*(>=|<=|>|<|=|!=)\s*'?([^']+)'?/i
+          );
+          if (compMatch) {
+            const [, field, operator, value] = compMatch;
+            const rowValue = row[field];
+            const cleanValue = value.replace(/'/g, "").trim();
+
+            // Try numeric comparison
+            const numRow = parseFloat(rowValue);
+            const numFilter = parseFloat(cleanValue);
+
+            if (!isNaN(numRow) && !isNaN(numFilter)) {
+              switch (operator) {
+                case ">=":
+                  return numRow >= numFilter;
+                case "<=":
+                  return numRow <= numFilter;
+                case ">":
+                  return numRow > numFilter;
+                case "<":
+                  return numRow < numFilter;
+                case "=":
+                  return numRow === numFilter;
+                case "!=":
+                  return numRow !== numFilter;
+                default:
+                  return true;
+              }
+            }
+
+            // String comparison
+            switch (operator) {
+              case "=":
+                return String(rowValue) === cleanValue;
+              case "!=":
+                return String(rowValue) !== cleanValue;
+              default:
+                return true;
+            }
+          }
+
+          return true; // If no pattern matches, include the row
+        });
+      });
+    }
+
+    // Handle GROUP BY with aggregations
+    const groupByMatch = query.match(
+      /GROUP BY\s+(.+?)(?:\s+HAVING|\s+ORDER BY|\s+LIMIT|$)/i
+    );
+    const selectMatch = query.match(/SELECT\s+(.+?)\s+FROM/i);
+
+    if (groupByMatch && selectMatch) {
+      const groupByFields = groupByMatch[1].split(",").map((f) => f.trim());
+      const selectClause = selectMatch[1];
+
+      // Parse aggregations from SELECT
+      const aggregations: { func: string; field: string; alias: string }[] = [];
+      const aggRegex =
+        /(SUM|COUNT|AVG|MIN|MAX)\s*\(\s*(\w+)\s*\)\s*(?:as\s+(\w+))?/gi;
+      let aggMatch;
+      while ((aggMatch = aggRegex.exec(selectClause)) !== null) {
+        aggregations.push({
+          func: aggMatch[1].toUpperCase(),
+          field: aggMatch[2],
+          alias: aggMatch[3] || aggMatch[2],
+        });
       }
+
+      // Group data
+      const groups = new Map<string, any[]>();
+      result.forEach((row) => {
+        const key = groupByFields.map((f) => row[f]).join("|||");
+        if (!groups.has(key)) {
+          groups.set(key, []);
+        }
+        groups.get(key)!.push(row);
+      });
+
+      // Calculate aggregations
+      result = Array.from(groups.entries()).map(([key, rows]) => {
+        const groupRow: any = {};
+
+        // Add group by fields
+        groupByFields.forEach((field, idx) => {
+          groupRow[field] = rows[0][field];
+        });
+
+        // Calculate aggregations
+        aggregations.forEach((agg) => {
+          const values = rows.map((r) => parseFloat(r[agg.field]) || 0);
+          switch (agg.func) {
+            case "SUM":
+              groupRow[agg.alias] = values.reduce((a, b) => a + b, 0);
+              break;
+            case "COUNT":
+              groupRow[agg.alias] = rows.length;
+              break;
+            case "AVG":
+              groupRow[agg.alias] =
+                values.reduce((a, b) => a + b, 0) / values.length;
+              break;
+            case "MIN":
+              groupRow[agg.alias] = Math.min(...values);
+              break;
+            case "MAX":
+              groupRow[agg.alias] = Math.max(...values);
+              break;
+          }
+        });
+
+        return groupRow;
+      });
+    }
+
+    // Handle ORDER BY
+    const orderByMatch = query.match(/ORDER BY\s+(.+?)(?:\s+LIMIT|$)/i);
+    if (orderByMatch) {
+      const orderClauses = orderByMatch[1].split(",").map((c) => c.trim());
+
+      result.sort((a, b) => {
+        for (const clause of orderClauses) {
+          const [field, direction] = clause.split(/\s+/);
+          const dir = direction?.toUpperCase() === "DESC" ? -1 : 1;
+
+          const valA = a[field];
+          const valB = b[field];
+
+          if (valA < valB) return -1 * dir;
+          if (valA > valB) return 1 * dir;
+        }
+        return 0;
+      });
     }
 
     // Handle LIMIT
@@ -146,6 +349,13 @@ function executeMockQuery(data: any[], query: string): any[] {
     if (limitMatch) {
       const limit = parseInt(limitMatch[1]);
       result = result.slice(0, limit);
+    }
+
+    // Handle TOP (SQL Server style)
+    const topMatch = query.match(/SELECT\s+TOP\s+(\d+)/i);
+    if (topMatch) {
+      const top = parseInt(topMatch[1]);
+      result = result.slice(0, top);
     }
 
     return result;
