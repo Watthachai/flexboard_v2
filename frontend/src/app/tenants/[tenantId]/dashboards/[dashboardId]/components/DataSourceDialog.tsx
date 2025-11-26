@@ -11,16 +11,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Loader2,
   RefreshCw,
@@ -29,11 +19,9 @@ import {
   Sparkles,
   X,
   Zap,
-  FileText,
   Clipboard,
   BarChart3,
   Database,
-  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -43,9 +31,6 @@ import {
   getDataSourceById,
   updateDashboard,
   previewTableData,
-  getMockData,
-  previewMockData,
-  uploadMockData,
 } from "@/lib/api";
 
 type DataSourceType = "mssql" | "mysql" | "postgresql" | "oracle" | "mongodb";
@@ -94,35 +79,12 @@ export function DataSourceDialog({
   const [previewColumns, setPreviewColumns] = useState<string[]>([]);
   const [loadingPreview, setLoadingPreview] = useState(false);
 
-  // Mock Data states
-  const [dataSourceMode, setDataSourceMode] = useState<"live" | "mock">("live");
-  const [mockDatasets, setMockDatasets] = useState<any[]>([]);
-  const [selectedMockDataId, setSelectedMockDataId] = useState<string>("");
-  const [loadingMockData, setLoadingMockData] = useState(false);
-
-  // Upload Mock Data Modal states
-  const [uploadModalOpen, setUploadModalOpen] = useState(false);
-  const [uploadForm, setUploadForm] = useState({
-    name: "",
-    description: "",
-    file: null as File | null,
-    fileContent: "",
-  });
-  const [uploading, setUploading] = useState(false);
-
   useEffect(() => {
     if (editDataSourceId) {
       loadDataSource();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editDataSourceId]);
-
-  useEffect(() => {
-    if (dataSourceMode === "mock") {
-      loadMockDatasets();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataSourceMode]);
 
   const parseConnectionString = async (connStr: string) => {
     try {
@@ -287,130 +249,9 @@ export function DataSourceDialog({
         password: ds.connection.password || "",
         schema: ds.connection.schema || "",
       });
-
-      // Check if this datasource is using mock data
-      if (ds.mockMode && ds.mockDataId) {
-        setDataSourceMode("mock");
-        // Load mock datasets first, then set selected
-        await loadMockDatasets();
-        setSelectedMockDataId(ds.mockDataId);
-        // Trigger preview load
-        await handleMockDataSelect(ds.mockDataId);
-      }
     } catch (error: any) {
       console.error("Error loading data source:", error);
       toast.error("Failed to load data source");
-    }
-  };
-
-  const loadMockDatasets = async () => {
-    try {
-      setLoadingMockData(true);
-      const datasets = await getMockData(tenantId);
-      setMockDatasets(datasets);
-    } catch (error: any) {
-      console.error("Error loading mock datasets:", error);
-      toast.error("Failed to load mock datasets");
-    } finally {
-      setLoadingMockData(false);
-    }
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Validate file extension
-    const fileName = file.name.toLowerCase();
-    if (!fileName.endsWith(".sql") && !fileName.endsWith(".json")) {
-      toast.error("Please upload a .sql or .json file");
-      return;
-    }
-
-    // Read file content
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target?.result as string;
-      setUploadForm((prev) => ({
-        ...prev,
-        file,
-        fileContent: content,
-      }));
-    };
-    reader.onerror = () => {
-      toast.error("Failed to read file");
-    };
-    reader.readAsText(file);
-  };
-
-  const handleUpload = async () => {
-    try {
-      if (!uploadForm.name.trim()) {
-        toast.error("Please enter a dataset name");
-        return;
-      }
-      if (!uploadForm.file || !uploadForm.fileContent) {
-        toast.error("Please select a file");
-        return;
-      }
-
-      setUploading(true);
-
-      const fileType = uploadForm.file.name.toLowerCase().endsWith(".sql")
-        ? "sql"
-        : "json";
-
-      await uploadMockData(tenantId, {
-        name: uploadForm.name,
-        description: uploadForm.description,
-        fileType,
-        content: uploadForm.fileContent,
-      });
-
-      toast.success("Mock data uploaded successfully");
-
-      // Reset form and close modal
-      setUploadForm({
-        name: "",
-        description: "",
-        file: null,
-        fileContent: "",
-      });
-      setUploadModalOpen(false);
-
-      // Refresh the list
-      await loadMockDatasets();
-    } catch (error: any) {
-      console.error("Error uploading mock data:", error);
-      toast.error(error.message || "Failed to upload mock data");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleMockDataSelect = async (mockDataId: string) => {
-    setSelectedMockDataId(mockDataId);
-
-    // Load preview of mock data
-    try {
-      setLoadingPreview(true);
-      const result = await previewMockData(tenantId, mockDataId, 10);
-      setPreviewData(result.rows);
-      setPreviewColumns(result.columns);
-
-      // Mark as "tested" for mock data
-      setTested(true);
-      setTestStatus({
-        success: true,
-        message: `Mock dataset loaded with ${result.totalRows} rows`,
-      });
-    } catch (error: any) {
-      console.error("Error previewing mock data:", error);
-      toast.error("Failed to preview mock data");
-      setPreviewData([]);
-      setPreviewColumns([]);
-    } finally {
-      setLoadingPreview(false);
     }
   };
 
@@ -461,27 +302,14 @@ export function DataSourceDialog({
   };
 
   const handleSave = async () => {
-    // Validation for mock mode
-    if (dataSourceMode === "mock") {
-      if (!formData.name) {
-        toast.error("Please enter a data source name");
-        return;
-      }
-      if (!selectedMockDataId) {
-        toast.error("Please select a mock dataset");
-        return;
-      }
-    } else {
-      // Validation for live mode
-      if (!formData.name || !formData.host || !formData.database) {
-        toast.error("Please fill in required fields");
-        return;
-      }
+    if (!formData.name || !formData.host || !formData.database) {
+      toast.error("Please fill in required fields");
+      return;
+    }
 
-      if (!tested || !testStatus?.success) {
-        toast.error("Please test the connection first");
-        return;
-      }
+    if (!tested || !testStatus?.success) {
+      toast.error("Please test the connection first");
+      return;
     }
 
     try {
@@ -489,61 +317,29 @@ export function DataSourceDialog({
 
       let dataSourceId: string;
 
-      if (dataSourceMode === "mock") {
-        // Mock mode - minimal payload
-        const mockPayload = {
-          name: formData.name,
-          type: "mysql" as const, // Use a valid type for schema, but won't be used
-          connection: {
-            host: "localhost",
-            port: 3306,
-            database: "mock",
-            username: "mock",
-            password: "mock",
-            schema: "",
-          },
-          mockMode: true,
-          mockDataId: selectedMockDataId,
-        };
+      const payload = {
+        name: formData.name,
+        type: formData.type,
+        connection: {
+          host: formData.host,
+          port: formData.port,
+          database: formData.database,
+          username: formData.username,
+          password: formData.password,
+          schema: formData.schema,
+        },
+      };
 
-        if (editDataSourceId) {
-          await updateDataSource(tenantId, editDataSourceId, mockPayload);
-          dataSourceId = editDataSourceId;
-          toast.success("Mock data source updated!");
-        } else {
-          const newDs = await createDataSource(tenantId, mockPayload);
-          dataSourceId = newDs.id;
-          toast.success("Mock data source created!");
-        }
+      if (editDataSourceId) {
+        await updateDataSource(tenantId, editDataSourceId, payload);
+        dataSourceId = editDataSourceId;
+        toast.success("Data source updated!");
       } else {
-        // Live mode - full connection details
-        const livePayload = {
-          name: formData.name,
-          type: formData.type,
-          connection: {
-            host: formData.host,
-            port: formData.port,
-            database: formData.database,
-            username: formData.username,
-            password: formData.password,
-            schema: formData.schema,
-          },
-          mockMode: false,
-          mockDataId: undefined,
-        };
-
-        if (editDataSourceId) {
-          await updateDataSource(tenantId, editDataSourceId, livePayload);
-          dataSourceId = editDataSourceId;
-          toast.success("Data source updated!");
-        } else {
-          const newDs = await createDataSource(tenantId, livePayload);
-          dataSourceId = newDs.id;
-          toast.success("Data source created!");
-        }
+        const newDs = await createDataSource(tenantId, payload);
+        dataSourceId = newDs.id;
+        toast.success("Data source created!");
       }
 
-      // Update dashboard with selected table if any
       if (selectedTable) {
         await updateDashboard(tenantId, dashboardId, {
           dataSourceId,
@@ -606,656 +402,401 @@ export function DataSourceDialog({
     <div className="flex flex-col lg:grid lg:grid-cols-5 gap-4 lg:gap-8 py-4 lg:py-6 flex-1 overflow-hidden px-6 lg:px-0">
       {/* Left side - Form */}
       <div className="lg:col-span-3 space-y-4 overflow-y-auto max-h-[calc(100vh-250px)] lg:max-h-[calc(95vh-200px)] lg:pr-2">
-        {/* Tabs for Data Source Mode */}
-        <Tabs
-          value={dataSourceMode}
-          onValueChange={(v) => setDataSourceMode(v as "live" | "mock")}
-          className="w-full"
-        >
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="live" className="flex items-center gap-2">
-              <Database className="h-4 w-4" />
-              Live Database
-            </TabsTrigger>
-            <TabsTrigger value="mock" className="flex items-center gap-2">
-              <Upload className="h-4 w-4" />
-              Mock Data
-            </TabsTrigger>
-          </TabsList>
-
-          {/* Live Database Tab */}
-          <TabsContent value="live" className="space-y-4 mt-4">
-            {/* Smart Input Section */}
-            {!showSmartInput ? (
-              <div className="flex justify-center">
-                <Button
-                  variant="outline"
-                  onClick={() => setShowSmartInput(true)}
-                  className="relative overflow-hidden bg-linear-to-r from-purple-500 via-pink-500 to-orange-500 text-white border-0 hover:from-purple-600 hover:via-pink-600 hover:to-orange-600 transition-all duration-300 shadow-lg hover:shadow-xl text-sm lg:text-base"
+        {/* Smart Input Section */}
+        {!showSmartInput ? (
+          <div className="flex justify-center">
+            <Button
+              variant="outline"
+              onClick={() => setShowSmartInput(true)}
+              className="relative overflow-hidden bg-linear-to-r from-purple-500 via-pink-500 to-orange-500 text-white border-0 hover:from-purple-600 hover:via-pink-600 hover:to-orange-600 transition-all duration-300 shadow-lg hover:shadow-xl text-sm lg:text-base"
+            >
+              <span className="relative z-10 flex items-center gap-2 font-semibold">
+                <Sparkles className="h-5 w-5" />
+                Smart Input
+              </span>
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-3 p-5 bg-linear-to-r from-purple-50 via-pink-50 to-orange-50 rounded-xl border-2 border-dashed border-purple-300 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-6 w-6 text-purple-600" />
+                <Label
+                  htmlFor="connectionString"
+                  className="text-base font-bold text-purple-700"
                 >
-                  <span className="relative z-10 flex items-center gap-2 font-semibold">
-                    <Sparkles className="h-5 w-5" />
-                    Smart Input
-                  </span>
-                </Button>
+                  Paste Your Connection String
+                </Label>
               </div>
-            ) : (
-              <div className="space-y-3 p-5 bg-linear-to-r from-purple-50 via-pink-50 to-orange-50 rounded-xl border-2 border-dashed border-purple-300 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="h-6 w-6 text-purple-600" />
-                    <Label
-                      htmlFor="connectionString"
-                      className="text-base font-bold text-purple-700"
-                    >
-                      Paste Your Connection String
-                    </Label>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setShowSmartInput(false);
-                      setConnectionString("");
-                    }}
-                    className="hover:bg-red-100"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-                <textarea
-                  id="connectionString"
-                  placeholder="Paste your connection string here..."
-                  value={connectionString}
-                  onChange={(e) => setConnectionString(e.target.value)}
-                  className="w-full min-h-20 p-3 border-2 border-purple-200 rounded-lg resize-none font-mono text-sm focus:border-purple-400 focus:ring-2 focus:ring-purple-200 transition-all"
-                />
-                <div className="flex gap-2 justify-end">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setShowSmartInput(false);
-                      setConnectionString("");
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => parseConnectionString(connectionString)}
-                    disabled={!connectionString.trim() || isAnimating}
-                    className="bg-linear-to-r from-purple-500 via-pink-500 to-orange-500 text-white hover:from-purple-600 hover:via-pink-600 hover:to-orange-600 transition-all duration-300 shadow-md hover:shadow-lg disabled:opacity-50"
-                  >
-                    <span className="flex items-center gap-2">
-                      {isAnimating ? (
-                        <>
-                          <Zap className="h-4 w-4 animate-spin" /> Parsing...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="h-4 w-4" /> Parse & Fill
-                        </>
-                      )}
-                    </span>
-                  </Button>
-                </div>
-                <div className="text-xs text-gray-600 space-y-2 bg-white p-3 rounded-lg border border-gray-200">
-                  <p className="font-bold text-sm text-gray-700 mb-2 flex items-center gap-2">
-                    <FileText className="h-4 w-4" /> Supported formats:
-                  </p>
-                  <div className="space-y-1.5 pl-1">
-                    <div className="flex items-start gap-2">
-                      <span className="text-purple-500 font-bold">•</span>
-                      <div>
-                        <span className="font-semibold text-purple-600">
-                          SQL Server:
-                        </span>
-                        <code className="block text-xs bg-purple-50 p-1.5 rounded mt-1 break-all">
-                          sqlserver://host:1433;database=db;user=sa;password=pass;schema=dbo
-                        </code>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <span className="text-blue-500 font-bold">•</span>
-                      <div>
-                        <span className="font-semibold text-blue-600">
-                          MySQL:
-                        </span>
-                        <code className="block text-xs bg-blue-50 p-1.5 rounded mt-1 break-all">
-                          mysql://user:pass@host:3306/database
-                        </code>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <span className="text-teal-500 font-bold">•</span>
-                      <div>
-                        <span className="font-semibold text-teal-600">
-                          PostgreSQL:
-                        </span>
-                        <code className="block text-xs bg-teal-50 p-1.5 rounded mt-1 break-all">
-                          postgresql://user:pass@host:5432/database
-                        </code>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <span className="text-green-500 font-bold">•</span>
-                      <div>
-                        <span className="font-semibold text-green-600">
-                          MongoDB:
-                        </span>
-                        <code className="block text-xs bg-green-50 p-1.5 rounded mt-1 break-all">
-                          mongodb://user:pass@host:27017/database
-                        </code>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-3">
-              <div>
-                <Label htmlFor="ds-name">Connection Name *</Label>
-                <Input
-                  id="ds-name"
-                  value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
-                  placeholder="e.g., Production DB, Analytics DB"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="ds-type">Database Type *</Label>
-                <Select
-                  value={formData.type}
-                  onValueChange={(value: DataSourceType) => {
-                    setFormData({
-                      ...formData,
-                      type: value,
-                      port: getDefaultPort(value),
-                    });
-                    setTested(false);
-                    setTestStatus(null);
-                  }}
-                >
-                  <SelectTrigger id="ds-type">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="mssql">Microsoft SQL Server</SelectItem>
-                    <SelectItem value="mysql">MySQL</SelectItem>
-                    <SelectItem value="postgresql">PostgreSQL</SelectItem>
-                    <SelectItem value="oracle">Oracle</SelectItem>
-                    <SelectItem value="mongodb">MongoDB</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div className="col-span-2">
-                  <Label htmlFor="ds-host">Host *</Label>
-                  <Input
-                    id="ds-host"
-                    value={formData.host}
-                    onChange={(e) => {
-                      setFormData({ ...formData, host: e.target.value });
-                      setTested(false);
-                      setTestStatus(null);
-                    }}
-                    placeholder="localhost or IP"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="ds-port">Port *</Label>
-                  <Input
-                    id="ds-port"
-                    type="number"
-                    value={formData.port}
-                    onChange={(e) => {
-                      setFormData({
-                        ...formData,
-                        port: parseInt(e.target.value),
-                      });
-                      setTested(false);
-                      setTestStatus(null);
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor="ds-database">Database Name *</Label>
-                <Input
-                  id="ds-database"
-                  value={formData.database}
-                  onChange={(e) => {
-                    setFormData({ ...formData, database: e.target.value });
-                    setTested(false);
-                    setTestStatus(null);
-                  }}
-                  placeholder="Database name"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="ds-username">Username *</Label>
-                <Input
-                  id="ds-username"
-                  value={formData.username}
-                  onChange={(e) => {
-                    setFormData({ ...formData, username: e.target.value });
-                    setTested(false);
-                    setTestStatus(null);
-                  }}
-                  placeholder="Database username"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="ds-password">Password *</Label>
-                <Input
-                  id="ds-password"
-                  type="text"
-                  value={formData.password}
-                  onChange={(e) => {
-                    setFormData({ ...formData, password: e.target.value });
-                    setTested(false);
-                    setTestStatus(null);
-                  }}
-                  placeholder="Database password"
-                />
-              </div>
-
-              {formData.type === "mssql" && (
-                <div>
-                  <Label htmlFor="ds-schema">Schema (Optional)</Label>
-                  <Input
-                    id="ds-schema"
-                    value={formData.schema}
-                    onChange={(e) =>
-                      setFormData({ ...formData, schema: e.target.value })
-                    }
-                    placeholder="dbo"
-                  />
-                </div>
-              )}
-
-              {/* Test Connection Button */}
               <Button
-                onClick={handleTestConnection}
-                disabled={testing}
-                variant={tested && testStatus?.success ? "default" : "outline"}
-                className="w-full"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowSmartInput(false);
+                  setConnectionString("");
+                }}
+                className="hover:bg-red-100"
               >
-                {testing ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Testing Connection...
-                  </>
-                ) : tested && testStatus?.success ? (
-                  <>
-                    <CheckCircle className="mr-2 h-4 w-4" />
-                    Connection Successful
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Test Connection
-                  </>
-                )}
+                <X className="h-4 w-4" />
               </Button>
-
-              {/* Connection Status */}
-              {testStatus && (
-                <div
-                  className={`p-3 rounded-lg ${
-                    testStatus.success
-                      ? "bg-green-50 border border-green-200"
-                      : "bg-red-50 border border-red-200"
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    {testStatus.success ? (
-                      <CheckCircle className="h-5 w-5 text-green-600" />
-                    ) : (
-                      <XCircle className="h-5 w-5 text-red-600" />
-                    )}
-                    <span
-                      className={
-                        testStatus.success ? "text-green-800" : "text-red-800"
-                      }
-                    >
-                      {testStatus.message}
-                    </span>
-                  </div>
-                </div>
-              )}
             </div>
-          </TabsContent>
+            <textarea
+              id="connectionString"
+              placeholder="Paste your connection string here..."
+              value={connectionString}
+              onChange={(e) => setConnectionString(e.target.value)}
+              className="w-full min-h-20 p-3 border-2 border-purple-200 rounded-lg resize-none font-mono text-sm focus:border-purple-400 focus:ring-2 focus:ring-purple-200 transition-all"
+            />
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setShowSmartInput(false);
+                  setConnectionString("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => parseConnectionString(connectionString)}
+                disabled={!connectionString.trim() || isAnimating}
+                className="bg-linear-to-r from-purple-500 via-pink-500 to-orange-500 text-white hover:from-purple-600 hover:via-pink-600 hover:to-orange-600 transition-all duration-300 shadow-md hover:shadow-lg disabled:opacity-50"
+              >
+                <span className="flex items-center gap-2">
+                  {isAnimating ? (
+                    <>
+                      <Zap className="h-4 w-4 animate-spin" /> Parsing...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" /> Parse & Fill
+                    </>
+                  )}
+                </span>
+              </Button>
+            </div>
+          </div>
+        )}
 
-          {/* Mock Data Tab */}
-          <TabsContent value="mock" className="space-y-4 mt-4">
-            {/* Data Source Name */}
-            <div>
-              <Label htmlFor="mock-name">Data Source Name *</Label>
+        {/* Manual Form */}
+        <div className="space-y-4 mt-4">
+          {/* Data Source Name */}
+          <div>
+            <Label htmlFor="name">Data Source Name *</Label>
+            <Input
+              id="name"
+              value={formData.name}
+              onChange={(e) =>
+                setFormData({ ...formData, name: e.target.value })
+              }
+              placeholder="My Database Connection"
+            />
+          </div>
+
+          {/* Database Type */}
+          <div>
+            <Label htmlFor="type">Database Type *</Label>
+            <Select
+              value={formData.type}
+              onValueChange={(value) => {
+                const type = value as DataSourceType;
+                setFormData({
+                  ...formData,
+                  type,
+                  port: getDefaultPort(type),
+                });
+                setTested(false);
+                setTestStatus(null);
+                setAvailableTables([]);
+              }}
+            >
+              <SelectTrigger id="type">
+                <SelectValue placeholder="Select database type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="mssql">
+                  <div className="flex items-center gap-2">
+                    <Database className="h-4 w-4" />
+                    SQL Server
+                  </div>
+                </SelectItem>
+                <SelectItem value="mysql">
+                  <div className="flex items-center gap-2">
+                    <Database className="h-4 w-4" />
+                    MySQL
+                  </div>
+                </SelectItem>
+                <SelectItem value="postgresql">
+                  <div className="flex items-center gap-2">
+                    <Database className="h-4 w-4" />
+                    PostgreSQL
+                  </div>
+                </SelectItem>
+                <SelectItem value="oracle">
+                  <div className="flex items-center gap-2">
+                    <Database className="h-4 w-4" />
+                    Oracle
+                  </div>
+                </SelectItem>
+                <SelectItem value="mongodb">
+                  <div className="flex items-center gap-2">
+                    <Database className="h-4 w-4" />
+                    MongoDB
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Host and Port */}
+          <div className="grid grid-cols-3 gap-4">
+            <div className="col-span-2">
+              <Label htmlFor="host">Host *</Label>
               <Input
-                id="mock-name"
-                value={formData.name}
-                onChange={(e) =>
-                  setFormData({ ...formData, name: e.target.value })
-                }
-                placeholder="My Mock Data Source"
+                id="host"
+                value={formData.host}
+                onChange={(e) => {
+                  setFormData({ ...formData, host: e.target.value });
+                  setTested(false);
+                  setTestStatus(null);
+                }}
+                placeholder="localhost or IP address"
               />
             </div>
-
-            {/* Mock Dataset Selection */}
             <div>
-              <Label htmlFor="mock-dataset-select">Select Mock Dataset *</Label>
-              {loadingMockData ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin" />
-                  <span className="ml-2 text-sm">Loading datasets...</span>
-                </div>
-              ) : mockDatasets.length === 0 ? (
-                <div className="p-4 border-2 border-dashed border-gray-300 rounded-lg text-center">
-                  <Upload className="h-8 w-8 mx-auto text-gray-400 mb-2" />
-                  <p className="text-sm text-gray-600 mb-3">
-                    No mock datasets available
-                  </p>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setUploadModalOpen(true)}
-                  >
-                    <Upload className="mr-2 h-4 w-4" />
-                    Upload Mock Data
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <Select
-                    value={selectedMockDataId}
-                    onValueChange={handleMockDataSelect}
-                  >
-                    <SelectTrigger id="mock-dataset-select">
-                      <SelectValue placeholder="Choose a mock dataset..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {mockDatasets.map((dataset: any) => (
-                        <SelectItem key={dataset.id} value={dataset.id}>
-                          <div className="flex items-center gap-2">
-                            <Database className="h-4 w-4" />
-                            <div>
-                              <div className="font-medium">
-                                {dataset.tableName || dataset.name}
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {dataset.rowCount} rows •{" "}
-                                {(
-                                  dataset.format ||
-                                  dataset.fileType ||
-                                  ""
-                                ).toUpperCase()}
-                              </div>
-                            </div>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => setUploadModalOpen(true)}
-                  >
-                    <Upload className="mr-2 h-4 w-4" />
-                    Upload New Mock Data
-                  </Button>
-                </div>
-              )}
+              <Label htmlFor="port">Port</Label>
+              <Input
+                id="port"
+                type="number"
+                value={formData.port}
+                onChange={(e) => {
+                  setFormData({
+                    ...formData,
+                    port: parseInt(e.target.value) || 0,
+                  });
+                  setTested(false);
+                  setTestStatus(null);
+                }}
+              />
             </div>
+          </div>
 
-            {/* Mock Data Info */}
-            {selectedMockDataId && (
-              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="flex items-start gap-2">
-                  <CheckCircle className="h-5 w-5 text-blue-600 mt-0.5" />
-                  <div className="flex-1">
-                    <p className="font-semibold text-blue-900 mb-1">
-                      Mock Dataset Selected
-                    </p>
-                    <p className="text-sm text-blue-700">
-                      {mockDatasets.find(
-                        (d: any) => d.id === selectedMockDataId
-                      )?.description ||
-                        "This mock dataset will be used instead of a live database connection."}
-                    </p>
-                  </div>
-                </div>
+          {/* Database Name */}
+          <div>
+            <Label htmlFor="database">Database Name *</Label>
+            <Input
+              id="database"
+              value={formData.database}
+              onChange={(e) => {
+                setFormData({ ...formData, database: e.target.value });
+                setTested(false);
+                setTestStatus(null);
+              }}
+              placeholder="database_name"
+            />
+          </div>
+
+          {/* Username and Password */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="username">Username</Label>
+              <Input
+                id="username"
+                value={formData.username}
+                onChange={(e) => {
+                  setFormData({ ...formData, username: e.target.value });
+                  setTested(false);
+                  setTestStatus(null);
+                }}
+                placeholder="db_user"
+              />
+            </div>
+            <div>
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                value={formData.password}
+                onChange={(e) => {
+                  setFormData({ ...formData, password: e.target.value });
+                  setTested(false);
+                  setTestStatus(null);
+                }}
+                placeholder="••••••••"
+              />
+            </div>
+          </div>
+
+          {/* Schema (optional) */}
+          <div>
+            <Label htmlFor="schema">Schema (Optional)</Label>
+            <Input
+              id="schema"
+              value={formData.schema}
+              onChange={(e) =>
+                setFormData({ ...formData, schema: e.target.value })
+              }
+              placeholder="dbo"
+            />
+          </div>
+
+          {/* Test Connection Button */}
+          <div className="flex items-center gap-4 pt-2">
+            <Button
+              variant="outline"
+              onClick={handleTestConnection}
+              disabled={testing || !formData.host || !formData.database}
+            >
+              {testing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Testing...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Test Connection
+                </>
+              )}
+            </Button>
+            {testStatus && (
+              <div
+                className={`flex items-center gap-2 text-sm ${
+                  testStatus.success ? "text-green-600" : "text-red-600"
+                }`}
+              >
+                {testStatus.success ? (
+                  <CheckCircle className="h-4 w-4" />
+                ) : (
+                  <XCircle className="h-4 w-4" />
+                )}
+                {testStatus.message}
               </div>
             )}
-          </TabsContent>
-        </Tabs>
+          </div>
+        </div>
       </div>
 
       {/* Right side - Preview Panel */}
       <div className="lg:col-span-2 flex">
         <div className="bg-gray-50 rounded-xl p-4 lg:p-6 border-2 border-gray-200 shadow-lg overflow-hidden flex flex-col w-full max-h-[calc(95vh-200px)] lg:max-h-[calc(95vh-250px)]">
           <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <Clipboard className="h-5 w-5" />{" "}
-            {dataSourceMode === "mock"
-              ? "Mock Data Preview"
-              : "Connection Preview"}
+            <Clipboard className="h-5 w-5" /> Connection Preview
           </h3>
 
-          {dataSourceMode === "live" ? (
-            <>
-              {/* Connection Info in 2 columns */}
-              <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm shrink-0">
-                <div>
-                  <span className="text-gray-600 text-xs">Name:</span>
-                  <p className="font-semibold text-gray-900 mt-0.5 text-sm">
-                    {formData.name || "-"}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-gray-600 text-xs">Type:</span>
-                  <p className="font-semibold text-gray-900 mt-0.5 text-sm">
-                    {formData.type.toUpperCase()}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-gray-600 text-xs">Endpoint:</span>
-                  <p className="font-mono text-xs text-gray-900 mt-0.5 break-all">
-                    {formData.host || "-"}:{formData.port || "-"}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-gray-600 text-xs">Database:</span>
-                  <p className="font-semibold text-gray-900 mt-0.5 text-sm">
-                    {formData.database || "-"}
-                  </p>
-                </div>
-              </div>
+          {/* Connection Info in 2 columns */}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm shrink-0">
+            <div>
+              <span className="text-gray-600 text-xs">Name:</span>
+              <p className="font-semibold text-gray-900 mt-0.5 text-sm">
+                {formData.name || "-"}
+              </p>
+            </div>
+            <div>
+              <span className="text-gray-600 text-xs">Type:</span>
+              <p className="font-semibold text-gray-900 mt-0.5 text-sm">
+                {formData.type.toUpperCase()}
+              </p>
+            </div>
+            <div>
+              <span className="text-gray-600 text-xs">Endpoint:</span>
+              <p className="font-mono text-xs text-gray-900 mt-0.5 break-all">
+                {formData.host || "-"}:{formData.port || "-"}
+              </p>
+            </div>
+            <div>
+              <span className="text-gray-600 text-xs">Database:</span>
+              <p className="font-semibold text-gray-900 mt-0.5 text-sm">
+                {formData.database || "-"}
+              </p>
+            </div>
+          </div>
 
-              {/* Table Selection Dropdown */}
-              {availableTables.length > 0 && (
-                <div className="pt-3">
-                  <Label
-                    htmlFor="table-select-preview"
-                    className="text-gray-600 text-xs"
-                  >
-                    Select Table:
-                  </Label>
-                  <Select
-                    value={selectedTable}
-                    onValueChange={handleTableSelect}
-                  >
-                    <SelectTrigger
-                      id="table-select-preview"
-                      className="mt-1 bg-white h-8 text-sm"
-                    >
-                      <SelectValue placeholder="Choose a table..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableTables.map((table) => (
-                        <SelectItem key={table} value={table}>
-                          {table}
-                        </SelectItem>
+          {/* Table Selection Dropdown */}
+          {availableTables.length > 0 && (
+            <div className="pt-3">
+              <Label
+                htmlFor="table-select-preview"
+                className="text-gray-600 text-xs"
+              >
+                Select Table:
+              </Label>
+              <Select value={selectedTable} onValueChange={handleTableSelect}>
+                <SelectTrigger
+                  id="table-select-preview"
+                  className="mt-1 bg-white h-8 text-sm"
+                >
+                  <SelectValue placeholder="Choose a table..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableTables.map((table) => (
+                    <SelectItem key={table} value={table}>
+                      {table}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Preview Data Table */}
+          {selectedTable && (
+            <div className="mt-3 flex-1 overflow-hidden flex flex-col">
+              <h4 className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1">
+                <BarChart3 className="h-4 w-4" /> Data Preview ({selectedTable})
+              </h4>
+              {loadingPreview ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-gray-600" />
+                  <span className="ml-2 text-sm text-gray-600">
+                    Loading preview...
+                  </span>
+                </div>
+              ) : previewData.length > 0 ? (
+                <div className="overflow-auto flex-1 bg-white rounded-lg border border-gray-200">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-gray-100 sticky top-0">
+                      <tr>
+                        {previewColumns.map((column) => (
+                          <th
+                            key={column}
+                            className="px-2 py-1 text-left font-semibold text-gray-800"
+                          >
+                            {column}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewData.map((row, idx) => (
+                        <tr
+                          key={idx}
+                          className="border-b border-gray-100 hover:bg-gray-50"
+                        >
+                          {previewColumns.map((column) => (
+                            <td
+                              key={column}
+                              className="px-2 py-1 text-gray-700"
+                            >
+                              {row[column]?.toString() || "-"}
+                            </td>
+                          ))}
+                        </tr>
                       ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              {/* Preview Data Table */}
-              {selectedTable && (
-                <div className="mt-3 flex-1 overflow-hidden flex flex-col">
-                  <h4 className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1">
-                    <BarChart3 className="h-4 w-4" /> Data Preview (
-                    {selectedTable})
-                  </h4>
-                  {loadingPreview ? (
-                    <div className="flex items-center justify-center py-8">
-                      <Loader2 className="h-6 w-6 animate-spin text-gray-600" />
-                      <span className="ml-2 text-sm text-gray-600">
-                        Loading preview...
-                      </span>
-                    </div>
-                  ) : previewData.length > 0 ? (
-                    <div className="overflow-auto flex-1 bg-white rounded-lg border border-gray-200">
-                      <table className="min-w-full text-xs">
-                        <thead className="bg-gray-100 sticky top-0">
-                          <tr>
-                            {previewColumns.map((column) => (
-                              <th
-                                key={column}
-                                className="px-2 py-1 text-left font-semibold text-gray-800"
-                              >
-                                {column}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {previewData.map((row, idx) => (
-                            <tr
-                              key={idx}
-                              className="border-b border-gray-100 hover:bg-gray-50"
-                            >
-                              {previewColumns.map((column) => (
-                                <td
-                                  key={column}
-                                  className="px-2 py-1 text-gray-700"
-                                >
-                                  {row[column]?.toString() || "-"}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      <div className="text-xs text-center text-gray-500 p-2 bg-gray-50">
-                        Showing {previewData.length} rows
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center py-4 text-gray-500 text-xs">
-                      No data available
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
-          ) : (
-            <>
-              {/* Mock Data Preview */}
-              {selectedMockDataId ? (
-                <div className="flex-1 overflow-hidden flex flex-col">
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm shrink-0 mb-4">
-                    <div>
-                      <span className="text-gray-600 text-xs">
-                        Mock Dataset:
-                      </span>
-                      <p className="font-semibold text-gray-900 mt-0.5 text-sm">
-                        {formData.name || "-"}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-gray-600 text-xs">Mode:</span>
-                      <p className="font-semibold text-gray-900 mt-0.5 text-sm">
-                        Mock Data
-                      </p>
-                    </div>
+                    </tbody>
+                  </table>
+                  <div className="text-xs text-center text-gray-500 p-2 bg-gray-50">
+                    Showing {previewData.length} rows
                   </div>
-
-                  <h4 className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1">
-                    <BarChart3 className="h-4 w-4" /> Data Preview
-                  </h4>
-
-                  {loadingPreview ? (
-                    <div className="flex items-center justify-center py-8">
-                      <Loader2 className="h-6 w-6 animate-spin text-gray-600" />
-                      <span className="ml-2 text-sm text-gray-600">
-                        Loading preview...
-                      </span>
-                    </div>
-                  ) : previewData.length > 0 ? (
-                    <div className="overflow-auto flex-1 bg-white rounded-lg border border-gray-200">
-                      <table className="min-w-full text-xs">
-                        <thead className="bg-gray-100 sticky top-0">
-                          <tr>
-                            {previewColumns.map((column) => (
-                              <th
-                                key={column}
-                                className="px-2 py-1 text-left font-semibold text-gray-800"
-                              >
-                                {column}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {previewData.map((row, idx) => (
-                            <tr
-                              key={idx}
-                              className="border-b border-gray-100 hover:bg-gray-50"
-                            >
-                              {previewColumns.map((column) => (
-                                <td
-                                  key={column}
-                                  className="px-2 py-1 text-gray-700"
-                                >
-                                  {row[column]?.toString() || "-"}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      <div className="text-xs text-center text-gray-500 p-2 bg-gray-50">
-                        Showing {previewData.length} rows
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center py-4 text-gray-500 text-xs">
-                      No preview available
-                    </div>
-                  )}
                 </div>
               ) : (
-                <div className="text-center py-8 text-gray-500">
-                  <Upload className="h-12 w-12 mx-auto mb-2 opacity-30" />
-                  <p className="text-sm">
-                    Select a mock dataset to preview data
-                  </p>
+                <div className="text-center py-4 text-gray-500 text-xs">
+                  No data available
                 </div>
               )}
-            </>
+            </div>
           )}
         </div>
       </div>
@@ -1267,11 +808,7 @@ export function DataSourceDialog({
         </Button>
         <Button
           onClick={handleSave}
-          disabled={
-            saving ||
-            (dataSourceMode === "live" && (!tested || !testStatus?.success)) ||
-            (dataSourceMode === "mock" && !selectedMockDataId)
-          }
+          disabled={saving || !tested || !testStatus?.success}
         >
           {saving ? (
             <>
@@ -1283,114 +820,6 @@ export function DataSourceDialog({
           )}
         </Button>
       </div>
-
-      {/* Upload Mock Data Modal */}
-      <Dialog open={uploadModalOpen} onOpenChange={setUploadModalOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Upload Mock Data</DialogTitle>
-            <DialogDescription>
-              Upload a SQL file (.sql) with INSERT statements or a JSON file
-              (.json) with an array of records.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            {/* Dataset Name */}
-            <div>
-              <Label htmlFor="upload-name">Dataset Name *</Label>
-              <Input
-                id="upload-name"
-                value={uploadForm.name}
-                onChange={(e) =>
-                  setUploadForm({ ...uploadForm, name: e.target.value })
-                }
-                placeholder="My Mock Dataset"
-              />
-            </div>
-
-            {/* Description */}
-            <div>
-              <Label htmlFor="upload-description">Description (Optional)</Label>
-              <Textarea
-                id="upload-description"
-                value={uploadForm.description}
-                onChange={(e) =>
-                  setUploadForm({
-                    ...uploadForm,
-                    description: e.target.value,
-                  })
-                }
-                placeholder="Brief description of this mock dataset..."
-                rows={3}
-              />
-            </div>
-
-            {/* File Upload */}
-            <div>
-              <Label htmlFor="upload-file">File *</Label>
-              <Input
-                id="upload-file"
-                type="file"
-                accept=".sql,.json"
-                onChange={handleFileSelect}
-              />
-              {uploadForm.file && (
-                <p className="text-sm text-gray-600 mt-2">
-                  Selected:{" "}
-                  <span className="font-medium">{uploadForm.file.name}</span>
-                  {" • "}
-                  {(uploadForm.file.size / 1024).toFixed(2)} KB
-                </p>
-              )}
-            </div>
-
-            {/* File Preview */}
-            {uploadForm.fileContent && (
-              <div>
-                <Label>File Preview</Label>
-                <div className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded-lg max-h-[200px] overflow-auto">
-                  <pre className="text-xs text-gray-700 whitespace-pre-wrap">
-                    {uploadForm.fileContent.substring(0, 500)}
-                    {uploadForm.fileContent.length > 500 && "..."}
-                  </pre>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setUploadModalOpen(false);
-                setUploadForm({
-                  name: "",
-                  description: "",
-                  file: null,
-                  fileContent: "",
-                });
-              }}
-              disabled={uploading}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleUpload} disabled={uploading}>
-              {uploading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Uploading...
-                </>
-              ) : (
-                <>
-                  <Upload className="mr-2 h-4 w-4" />
-                  Upload
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

@@ -91,6 +91,7 @@ interface DesignTabProps {
     currentVersion: string;
     isViewingCurrent: boolean;
   }) => void;
+  onGoToSettings?: () => void;
 }
 
 interface TableColumn {
@@ -109,6 +110,7 @@ export function DesignTab({
   dashboardId,
   onUpdate,
   onVersionChange,
+  onGoToSettings,
 }: DesignTabProps) {
   const { user } = useAuth();
   const [configText, setConfigText] = useState<string>("");
@@ -119,6 +121,7 @@ export function DesignTab({
 
   // DataSource states
   const [dataSource, setDataSource] = useState<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [loadingDataSource, setLoadingDataSource] = useState(false);
 
   // Version management states
@@ -277,24 +280,6 @@ export function DesignTab({
     try {
       setLoadingColumns(true);
 
-      // If mock mode, get columns from mock data
-      if (dataSource.mockMode && dataSource.mockDataId) {
-        const { getMockDataById } = await import("@/lib/api");
-        const mockData = await getMockDataById(tenantId, dataSource.mockDataId);
-
-        if (mockData.columns && Array.isArray(mockData.columns)) {
-          // Convert string columns to TableColumn format
-          const cols = mockData.columns.map((col: string) => ({
-            name: col,
-            type: "string", // Mock data doesn't have type info
-          }));
-          setColumns(cols);
-        } else {
-          setColumns([]);
-        }
-        return;
-      }
-
       // For live database, need selectedTable
       if (!dashboard.selectedTable) {
         console.log("No table selected for live database");
@@ -328,22 +313,6 @@ export function DesignTab({
 
     try {
       setLoadingPreview(true);
-
-      // If mock mode, get preview from mock data
-      if (dataSource.mockMode && dataSource.mockDataId) {
-        const { previewMockData } = await import("@/lib/api");
-        const result = await previewMockData(
-          tenantId,
-          dataSource.mockDataId,
-          25
-        );
-
-        setPreviewData({
-          columns: result.columns || [],
-          rows: result.rows || [],
-        });
-        return;
-      }
 
       // For live database, need selectedTable
       if (!dashboard.selectedTable) {
@@ -953,8 +922,7 @@ export function DesignTab({
   };
 
   // Check if we have required data to show config editor
-  // For mock data: just need dataSourceId (no table required)
-  // For live data: need both dataSourceId and selectedTable
+  // Need both dataSourceId and selectedTable for live data
   if (!dashboard?.dataSourceId) {
     return (
       <Card>
@@ -983,19 +951,16 @@ export function DesignTab({
               <div className="flex items-start gap-2">
                 <span className="text-blue-500 font-bold">3.</span>
                 <p className="text-sm">
-                  Test the connection and choose a <strong>Table</strong> (for
-                  live database) or <strong>Mock Dataset</strong>
+                  Test the connection and choose a <strong>Table</strong>
                 </p>
               </div>
             </div>
             <Button
               className="mt-4"
               onClick={() => {
-                // Switch to settings tab
-                const settingsTab = document.querySelector(
-                  '[value="settings"]'
-                ) as HTMLElement;
-                settingsTab?.click();
+                if (onGoToSettings) {
+                  onGoToSettings();
+                }
               }}
             >
               <Sparkles className="mr-2 h-4 w-4" />
@@ -1015,9 +980,7 @@ export function DesignTab({
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="flex items-center gap-1">
               <Database className="h-3 w-3" />
-              {dataSource?.mockMode
-                ? `Mock Data: ${dataSource.mockDataId || "N/A"}`
-                : `Table: ${dashboard.selectedTable || "N/A"}`}
+              {`Table: ${dashboard.selectedTable || "N/A"}`}
             </Badge>
             <Badge variant={isValid ? "default" : "destructive"}>
               {isValid ? "Valid JSON" : "Invalid JSON"}
