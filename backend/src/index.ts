@@ -122,7 +122,6 @@ import { onpremRouter } from "./routes/onprem.js"; // OnPrem API routes
 import { apiKeysRouter } from "./routes/apiKeys.js"; // API Keys management
 import aiAssistantRouter from "./routes/ai-assistant.js"; // AI Assistant routes
 import chatHistoryRouter from "./routes/chat-history.js"; // Chat History routes
-import { mockDataRouter } from "./routes/mockdata.js"; // Mock Data routes
 
 // ===== Express App =====
 const app = express();
@@ -199,7 +198,6 @@ app.use("/api/tenants/:tenantId/api-keys", apiKeysRouter); // API Keys managemen
 app.use("/api", aiAssistantRouter); // AI Assistant routes
 app.use("/api", chatHistoryRouter); // Chat History routes
 app.use("/api", columnsRouter); // Columns routes
-app.use("/api/tenants", mockDataRouter); // Mock data import and query routes
 
 // Invite Codes Route
 app.use("/api/invite-codes", inviteCodesRouter);
