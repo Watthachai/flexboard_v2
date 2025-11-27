@@ -51,6 +51,8 @@ const CreateDataSourceSchema = z.object({
   availableTables: z.array(z.string()).optional(),
   mockMode: z.boolean().optional(), // New: Toggle for mock mode
   mockDataId: z.string().optional(), // New: Reference to mock dataset
+  skipConnectionTest: z.boolean().optional(), // New: Skip test for on-prem only DBs
+  defaultTable: z.string().optional(), // New: Default table when test is skipped
 });
 
 const TestConnectionSchema = z.object({

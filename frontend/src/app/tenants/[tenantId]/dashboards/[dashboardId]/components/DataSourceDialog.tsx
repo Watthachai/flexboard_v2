@@ -34,7 +34,10 @@ import {
   BarChart3,
   Database,
   Upload,
+  AlertTriangle,
+  ShieldAlert,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import {
   testDataSourceConnection,
@@ -93,6 +96,10 @@ export function DataSourceDialog({
   const [previewData, setPreviewData] = useState<any[]>([]);
   const [previewColumns, setPreviewColumns] = useState<string[]>([]);
   const [loadingPreview, setLoadingPreview] = useState(false);
+
+  // Skip connection test for on-prem only databases
+  const [skipConnectionTest, setSkipConnectionTest] = useState(false);
+  const [manualTableName, setManualTableName] = useState("");
 
   // Mock Data states
   const [dataSourceMode, setDataSourceMode] = useState<"live" | "mock">("live");
@@ -478,7 +485,8 @@ export function DataSourceDialog({
         return;
       }
 
-      if (!tested || !testStatus?.success) {
+      // Only require test if not skipping
+      if (!skipConnectionTest && (!tested || !testStatus?.success)) {
         toast.error("Please test the connection first");
         return;
       }
@@ -530,16 +538,26 @@ export function DataSourceDialog({
           },
           mockMode: false,
           mockDataId: undefined,
+          skipConnectionTest: skipConnectionTest,
+          defaultTable: manualTableName || undefined,
         };
 
         if (editDataSourceId) {
           await updateDataSource(tenantId, editDataSourceId, livePayload);
           dataSourceId = editDataSourceId;
-          toast.success("Data source updated!");
+          toast.success(
+            skipConnectionTest
+              ? "Data source updated! (Connection test skipped)"
+              : "Data source updated!"
+          );
         } else {
           const newDs = await createDataSource(tenantId, livePayload);
           dataSourceId = newDs.id;
-          toast.success("Data source created!");
+          toast.success(
+            skipConnectionTest
+              ? "Data source created! Will test connection on On-Prem"
+              : "Data source created!"
+          );
         }
       }
 
@@ -933,6 +951,58 @@ export function DataSourceDialog({
                   </div>
                 </div>
               )}
+
+              {/* Skip Connection Test Option */}
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <Checkbox
+                    id="skip-test"
+                    checked={skipConnectionTest}
+                    onCheckedChange={(checked) =>
+                      setSkipConnectionTest(checked as boolean)
+                    }
+                  />
+                  <div className="flex-1">
+                    <label
+                      htmlFor="skip-test"
+                      className="text-sm font-medium text-amber-900 cursor-pointer flex items-center gap-2"
+                    >
+                      <ShieldAlert className="h-4 w-4" />
+                      ข้ามการทดสอบ Connection (สำหรับ On-Prem เท่านั้น)
+                    </label>
+                    <p className="text-xs text-amber-700 mt-1">
+                      ใช้เมื่อ Database อยู่ใน network ที่ Cloud เข้าถึงไม่ได้
+                      (เช่น ภายในองค์กรลูกค้า) Connection จะถูกทดสอบเมื่อ deploy
+                      ไปยัง On-Prem
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Manual Table Input when skip test is enabled */}
+              {skipConnectionTest && (
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3 animate-in fade-in slide-in-from-top-2">
+                  <div className="flex items-center gap-2 text-blue-800">
+                    <AlertTriangle className="h-4 w-4" />
+                    <span className="text-sm font-medium">
+                      กำหนด Table ด้วยตัวเอง (ไม่บังคับ)
+                    </span>
+                  </div>
+                  <p className="text-xs text-blue-700">
+                    เนื่องจากไม่สามารถดึงรายชื่อ Table ได้ คุณสามารถพิมพ์ชื่อ
+                    Table ที่ต้องการใช้งานได้
+                  </p>
+                  <Input
+                    value={manualTableName}
+                    onChange={(e) => setManualTableName(e.target.value)}
+                    placeholder="เช่น dbo.Sales, Orders, Products"
+                    className="bg-white"
+                  />
+                  <p className="text-xs text-blue-600">
+                    💡 หรือทิ้งว่างไว้ แล้วไปเลือก Table ตอนสร้าง Widget ก็ได้
+                  </p>
+                </div>
+              )}
             </div>
           </TabsContent>
 
@@ -1269,7 +1339,9 @@ export function DataSourceDialog({
           onClick={handleSave}
           disabled={
             saving ||
-            (dataSourceMode === "live" && (!tested || !testStatus?.success)) ||
+            (dataSourceMode === "live" &&
+              !skipConnectionTest &&
+              (!tested || !testStatus?.success)) ||
             (dataSourceMode === "mock" && !selectedMockDataId)
           }
         >
