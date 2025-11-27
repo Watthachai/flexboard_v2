@@ -106,6 +106,43 @@ export default function WidgetRenderer({
             } else {
               selectFields.push(field);
             }
+          } else if (widget.dataConfig.multiLine && widget.dataConfig.lines) {
+            // For multi-line charts - add xField and all yFields from lines array
+            if (xField) {
+              if (!hasGroupBy || (groupBy && groupBy.includes(xField))) {
+                selectFields.push(xField);
+              }
+            }
+            // Add each line's yField with its aggregation
+            widget.dataConfig.lines.forEach((line: any) => {
+              if (line.yField) {
+                const lineAgg = line.aggregation || aggregation;
+                if (lineAgg && hasGroupBy) {
+                  selectFields.push(
+                    `${lineAgg.toUpperCase()}(${line.yField}) as ${line.yField}`
+                  );
+                } else {
+                  selectFields.push(line.yField);
+                }
+              }
+            });
+          } else if (widget.dataConfig.seriesField) {
+            // For seriesField multi-line charts - need xField, seriesField and yField
+            const { seriesField } = widget.dataConfig;
+            if (xField) {
+              selectFields.push(xField);
+            }
+            // seriesField must be in SELECT for GROUP BY to work
+            selectFields.push(seriesField);
+            if (yField) {
+              if (aggregation && hasGroupBy) {
+                selectFields.push(
+                  `${aggregation.toUpperCase()}(${yField}) as ${yField}`
+                );
+              } else {
+                selectFields.push(yField);
+              }
+            }
           } else {
             // Standard xField/yField approach
             if (xField) {
