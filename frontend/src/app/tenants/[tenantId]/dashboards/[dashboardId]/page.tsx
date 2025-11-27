@@ -31,6 +31,7 @@ import {
   Settings,
   Plus,
   Loader2,
+  BookOpen,
 } from "lucide-react";
 import {
   getDashboardById,
@@ -49,6 +50,7 @@ import { DesignTab } from "./components/DesignTab";
 import { VersionsTab } from "./components/VersionsTab";
 import { SettingsTab } from "./components/SettingsTab";
 import { DataSourceDialog } from "./components/DataSourceDialog";
+import { DocumentationTab } from "./components/DocumentationTab";
 import WidgetRenderer from "@/components/widgets/WidgetRenderer";
 import GlobalFilters, {
   GlobalFilter,
@@ -544,6 +546,10 @@ export default function DashboardDetailPage() {
             <Settings className="mr-2 h-4 w-4" />
             Settings
           </TabsTrigger>
+          <TabsTrigger value="docs">
+            <BookOpen className="mr-2 h-4 w-4" />
+            Docs
+          </TabsTrigger>
         </TabsList>
 
         {/* Design Tab */}
@@ -574,6 +580,11 @@ export default function DashboardDetailPage() {
             onEditDataSource={handleEditDataSource}
             onSaveDataSource={handleSaveDataSource}
           />
+        </TabsContent>
+
+        {/* Documentation Tab */}
+        <TabsContent value="docs" className="mt-6">
+          <DocumentationTab />
         </TabsContent>
       </Tabs>
 
