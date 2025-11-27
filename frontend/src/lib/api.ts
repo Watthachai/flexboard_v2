@@ -816,6 +816,15 @@ export async function chatWithAI(
   success: boolean;
   response: string;
   config?: any;
+  configChanges?: {
+    action: "update" | "add" | "remove";
+    targetType: "widget" | "filter" | "globalSettings" | "theme";
+    targetId?: string;
+    changes?: Record<string, any>;
+    newWidget?: any;
+    newFilter?: any;
+    explanation?: string;
+  };
   suggestions?: string[];
   model: string;
   sampleDataUsed?: boolean;
