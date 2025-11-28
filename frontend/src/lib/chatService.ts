@@ -27,8 +27,9 @@ export interface ChatSession {
 }
 
 export class ChatService {
+  // ⭐ ใช้ตัวแปรเดียวกับ api.ts เพื่อหลีกเลี่ยง CORS issues
   private static API_BASE =
-    process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001/api";
+    (process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001") + "/api";
 
   /**
    * Get Firebase ID Token

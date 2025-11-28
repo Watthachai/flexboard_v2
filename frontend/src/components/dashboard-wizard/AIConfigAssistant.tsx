@@ -18,6 +18,7 @@ import {
   Download,
   Upload,
   Trash2,
+  X,
 } from "lucide-react";
 import {
   Select,
@@ -55,14 +56,52 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  FileCode,
+  Search,
+  Pencil,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Eye,
+} from "lucide-react";
+
+// ⭐ Agent Step Interface - แสดง process แบบ step-by-step
+interface AgentStep {
+  id: string;
+  type: "read" | "analyze" | "edit" | "complete";
+  title: string;
+  description?: string;
+  status: "pending" | "running" | "complete" | "error";
+  details?: string;
+  timestamp?: Date;
+}
 
 interface Message {
   role: "user" | "assistant";
   content: string;
   config?: any;
+  configChanges?: ConfigChanges; // ⭐ NEW: Partial changes info
   suggestions?: string[];
   timestamp: Date;
   isTyping?: boolean;
+  agentSteps?: AgentStep[]; // ⭐ NEW: Agent steps for this message
+}
+
+// ⭐ NEW: Interface for partial config changes
+interface ConfigChanges {
+  action: "update" | "add" | "remove";
+  targetType: "widget" | "filter" | "globalSettings" | "theme";
+  targetId?: string;
+  changes?: Record<string, any>;
+  newWidget?: any;
+  newFilter?: any;
+  explanation?: string;
 }
 
 interface AIConfigAssistantProps {
@@ -79,6 +118,246 @@ interface AIConfigAssistantProps {
   ) => void;
 }
 
+// ⭐ Agent Steps Display Component - แสดง process แบบ Copilot
+function AgentStepsDisplay({ steps }: { steps: AgentStep[] }) {
+  const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
+
+  const toggleStep = (stepId: string) => {
+    setExpandedSteps((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(stepId)) {
+        newSet.delete(stepId);
+      } else {
+        newSet.add(stepId);
+      }
+      return newSet;
+    });
+  };
+
+  const getStepIcon = (step: AgentStep) => {
+    if (step.status === "running") {
+      return <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-500" />;
+    }
+    if (step.status === "complete") {
+      return <Check className="h-3.5 w-3.5 text-green-500" />;
+    }
+    if (step.status === "error") {
+      return <X className="h-3.5 w-3.5 text-red-500" />;
+    }
+
+    // Pending - show type icon
+    switch (step.type) {
+      case "read":
+        return <Eye className="h-3.5 w-3.5 text-gray-400" />;
+      case "analyze":
+        return <Search className="h-3.5 w-3.5 text-gray-400" />;
+      case "edit":
+        return <Pencil className="h-3.5 w-3.5 text-gray-400" />;
+      default:
+        return <FileCode className="h-3.5 w-3.5 text-gray-400" />;
+    }
+  };
+
+  if (!steps || steps.length === 0) return null;
+
+  return (
+    <div className="space-y-1 mb-2">
+      {steps.map((step) => (
+        <Collapsible
+          key={step.id}
+          open={expandedSteps.has(step.id)}
+          onOpenChange={() => toggleStep(step.id)}
+        >
+          <CollapsibleTrigger className="flex items-center gap-2 w-full text-left p-1.5 hover:bg-gray-100 rounded text-xs group">
+            {getStepIcon(step)}
+            <span
+              className={`flex-1 ${
+                step.status === "complete"
+                  ? "text-gray-600"
+                  : step.status === "running"
+                  ? "text-blue-600 font-medium"
+                  : "text-gray-500"
+              }`}
+            >
+              {step.title}
+            </span>
+            {step.details &&
+              (expandedSteps.has(step.id) ? (
+                <ChevronDown className="h-3 w-3 text-gray-400" />
+              ) : (
+                <ChevronRight className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100" />
+              ))}
+          </CollapsibleTrigger>
+          {step.details && (
+            <CollapsibleContent>
+              <div className="ml-6 pl-2 border-l-2 border-gray-200 text-xs text-gray-500 py-1">
+                <pre className="whitespace-pre-wrap font-mono text-[10px] bg-gray-50 p-2 rounded">
+                  {step.details}
+                </pre>
+              </div>
+            </CollapsibleContent>
+          )}
+        </Collapsible>
+      ))}
+    </div>
+  );
+}
+
+// ⭐ Helper: Parse ---CHANGES--- block from AI response
+function parseChangesFromResponse(response: string): {
+  cleanResponse: string;
+  parsedChanges: ConfigChanges | null;
+} {
+  // More flexible regex - handle various formatting from AI
+  const changesMatch = response.match(
+    /---CHANGES---\s*(\{[\s\S]*?\})\s*---END---/
+  );
+
+  if (changesMatch) {
+    try {
+      const changesJson = changesMatch[1].trim();
+      const parsedChanges = JSON.parse(changesJson) as ConfigChanges;
+      // Remove the ---CHANGES--- block from the response
+      const cleanResponse = response
+        .replace(/---CHANGES---[\s\S]*?---END---/g, "")
+        .trim();
+      return { cleanResponse, parsedChanges };
+    } catch {
+      // Still try to clean the response even if parse fails
+      const cleanResponse = response
+        .replace(/---CHANGES---[\s\S]*?---END---/g, "")
+        .trim();
+      return { cleanResponse, parsedChanges: null };
+    }
+  }
+
+  // Try alternative format without markers (just find JSON object with action/targetType)
+  const jsonMatch = response.match(
+    /\{\s*"action"\s*:\s*"(update|add|remove)"[\s\S]*?"targetType"[\s\S]*?\}/
+  );
+  if (jsonMatch) {
+    try {
+      const parsedChanges = JSON.parse(jsonMatch[0]) as ConfigChanges;
+      const cleanResponse = response.replace(jsonMatch[0], "").trim();
+      return { cleanResponse, parsedChanges };
+    } catch {
+      // Ignore parse errors
+    }
+  }
+
+  return { cleanResponse: response, parsedChanges: null };
+}
+
+// ⭐ NEW: Component สำหรับแสดง Config Changes แบบสวยๆ
+function ConfigChangesDisplay({ changes }: { changes: ConfigChanges }) {
+  const getActionIcon = () => {
+    switch (changes.action) {
+      case "add":
+        return <span className="text-green-500">➕</span>;
+      case "remove":
+        return <span className="text-red-500">➖</span>;
+      case "update":
+        return <span className="text-blue-500">✏️</span>;
+      default:
+        return null;
+    }
+  };
+
+  const getActionText = () => {
+    switch (changes.action) {
+      case "add":
+        return "เพิ่ม";
+      case "remove":
+        return "ลบ";
+      case "update":
+        return "แก้ไข";
+      default:
+        return changes.action;
+    }
+  };
+
+  return (
+    <div className="bg-linear-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-3 my-2">
+      <div className="flex items-center gap-2 mb-2">
+        {getActionIcon()}
+        <span className="font-medium text-sm text-blue-800">
+          {getActionText()} {changes.targetType}
+          {changes.targetId && (
+            <code className="ml-1 px-1.5 py-0.5 bg-blue-100 rounded text-xs">
+              {changes.targetId}
+            </code>
+          )}
+        </span>
+      </div>
+
+      {changes.explanation && (
+        <p className="text-xs text-gray-600 mb-2">{changes.explanation}</p>
+      )}
+
+      {changes.changes && Object.keys(changes.changes).length > 0 && (
+        <div className="bg-white rounded p-2 border border-blue-100">
+          <div className="text-xs font-medium text-gray-500 mb-1">
+            การเปลี่ยนแปลง:
+          </div>
+          <div className="space-y-1">
+            {Object.entries(changes.changes).map(([key, value]) => (
+              <div key={key} className="flex items-center text-xs font-mono">
+                <span className="text-purple-600 mr-1">{key}:</span>
+                <span className="text-green-600">
+                  {typeof value === "string" ? (
+                    value.startsWith("#") ? (
+                      <span className="flex items-center gap-1">
+                        <span
+                          className="inline-block w-3 h-3 rounded border"
+                          style={{ backgroundColor: value }}
+                        />
+                        {value}
+                      </span>
+                    ) : (
+                      `"${value}"`
+                    )
+                  ) : (
+                    JSON.stringify(value)
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {changes.newWidget && (
+        <div className="bg-white rounded p-2 border border-green-100 mt-2">
+          <div className="text-xs font-medium text-green-600 mb-1">
+            Widget ใหม่:
+          </div>
+          <div className="text-xs font-mono">
+            <div>
+              <span className="text-gray-500">ID:</span> {changes.newWidget.id}
+            </div>
+            <div>
+              <span className="text-gray-500">Type:</span>{" "}
+              {changes.newWidget.type}
+            </div>
+            <div>
+              <span className="text-gray-500">Title:</span>{" "}
+              {changes.newWidget.title}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ⭐ Action footer */}
+      <div className="mt-3 pt-2 border-t border-blue-100 flex items-center gap-2">
+        <Sparkles className="h-3.5 w-3.5 text-blue-500" />
+        <span className="text-xs text-blue-700">
+          ดู Diff view เพื่อยืนยันการเปลี่ยนแปลง →
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export function AIConfigAssistant({
   tenantId,
   dashboardId = "temp-dashboard", // Default ถ้ายังไม่มี dashboard ID
@@ -88,44 +367,68 @@ export function AIConfigAssistant({
   selectedTable,
   onShowDiff,
 }: AIConfigAssistantProps) {
+  // ⭐ Agent steps state - สำหรับแสดง real-time process
+  const [currentAgentSteps, setCurrentAgentSteps] = useState<AgentStep[]>([]);
+
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
       content: currentConfig?.widgets?.length
-        ? `👋 สวัสดีครับ! ผมเห็นว่าคุณมี ${
+        ? `👋 สวัสดีครับ! ผมเห็นว่าคุณมี **${
             currentConfig.widgets.length
-          } widget อยู่ใน dashboard แล้ว${
-            selectedTable ? ` และเชื่อมต่อกับตาราง "${selectedTable}"` : ""
-          } ผมสามารถช่วยเพิ่ม แก้ไข หรือจัดเรียงใหม่ได้ครับ${
-            dataSource && selectedTable && tableSchema
-              ? " รวมถึงเสนอแนะ widget ที่เหมาะสมกับข้อมูลของคุณ"
+          } widget** อยู่ใน dashboard แล้ว
+
+📊 **Widget ที่มี:**
+${currentConfig.widgets
+  .slice(0, 5)
+  .map((w: any, i: number) => `${i + 1}. ${w.title || w.id} (${w.type})`)
+  .join("\n")}${
+            currentConfig.widgets.length > 5
+              ? `\n...และอีก ${currentConfig.widgets.length - 5} widgets`
               : ""
-          } คุณต้องการทำอะไรครับ?\n\n(I can also respond in English if you prefer!)`
-        : !tableSchema
-        ? `👋 สวัสดีครับ! ผมเป็น AI agent ที่จะช่วยสร้าง dashboard ให้คุณ\n\n**แต่ก่อนอื่น ผมขอดูข้อมูลในตารางของคุณก่อนนะครับ** เพื่อจะได้แนะนำ widget ที่เหมาะสมให้คุณ\n\n🔍 **ขั้นตอน:**\n1. ไปที่แท็บ **"Columns"** ด้านขวามือ\n2. ดูว่ามี field อะไรบ้างในตาราง\n3. กลับมาคุยกับผมใหม่ แล้วบอกว่าเห็น columns อะไรบ้าง\n\nหรือถ้าเห็น columns แล้ว สามารถบอกผมได้เลยครับ ว่ามี field อะไรบ้าง แล้วผมจะแนะนำ dashboard ที่เหมาะสมให้!\n\n(I can also respond in English if you prefer!)`
-        : `👋 สวัสดีครับ! ผมเป็น AI agent ที่จะช่วยสร้าง dashboard ให้คุณ${
-            selectedTable ? ` จากตาราง "${selectedTable}"` : ""
-          }\n\n🎯 **จากข้อมูลที่เห็น** มี columns ที่น่าสนใจมากครับ! ผมสามารถช่วยสร้าง charts, KPIs และตั้งค่าต่างๆ ได้เลย พร้อมวิเคราะห์ข้อมูลจริงเพื่อแนะนำ visualization ที่เหมาะสม\n\nบอกมาเลยว่าอยากจะทำอะไรครับ! เช่น:\n- แสดงตัวเลขสำคัญเป็น KPI\n- เปรียบเทียบข้อมูลด้วย chart\n- แสดงแนวโน้มตามเวลา\n\n(I can also respond in English if you prefer!)`,
+          }
+
+ผมสามารถช่วย **แก้ไข config** ให้คุณได้ทันที เช่น:
+- เปลี่ยนสี, ขนาด, ตำแหน่ง widget
+- เพิ่ม/ลบ widget
+- แก้ไข dataConfig, styleConfig
+
+บอกมาเลยว่าอยากแก้อะไรครับ! 🎯`
+        : `👋 สวัสดีครับ! ผมเป็น AI ที่จะช่วย**สร้างและแก้ไข Dashboard Config** ให้คุณ
+
+🎯 **สิ่งที่ผมทำได้:**
+- สร้าง widget ใหม่ (bar, line, pie, metric, table, gauge...)
+- แก้ไข config ที่มีอยู่
+- ปรับ style, สี, ขนาด
+- เพิ่ม/ลบ/แก้ไข dataConfig
+
+${selectedTable ? `📋 **ตารางที่เลือก:** \`${selectedTable}\`` : ""}
+${
+  tableSchema?.columns
+    ? `\n📊 **Columns ที่มี:** ${tableSchema.columns
+        .slice(0, 5)
+        .map((c: any) => c.name)
+        .join(", ")}${tableSchema.columns.length > 5 ? "..." : ""}`
+    : ""
+}
+
+บอกมาเลยว่าอยากสร้างอะไรครับ! เช่น:
+- "สร้าง bar chart แสดง top 10 สินค้า"
+- "เพิ่ม KPI แสดงยอดรวม"
+- "สร้าง dashboard ให้หน่อย"`,
       timestamp: new Date(),
       isTyping: true,
-      suggestions:
-        dataSource && selectedTable && tableSchema
-          ? [
-              "สร้าง KPI แสดงตัวเลขสำคัญ",
-              "สร้างกราฟแท่งเปรียบเทียบข้อมูล",
-              "แสดงแนวโน้มตามเวลา",
-            ]
-          : !tableSchema
-          ? [
-              "ไปดู Available Columns ใน Columns tab",
-              "บอกผมว่าเห็น field อะไรบ้างในตาราง",
-              "ถามเกี่ยวกับ widget types ที่มี",
-            ]
-          : [
-              "สร้าง dashboard ใหม่",
-              "เพิ่ม chart ใหม่",
-              "แสดงข้อมูลในรูปแบบ KPI",
-            ],
+      suggestions: currentConfig?.widgets?.length
+        ? [
+            "เปลี่ยนสี widget แรกเป็นสีน้ำเงิน",
+            "เพิ่ม line chart แสดง trend",
+            "ลบ widget สุดท้าย",
+          ]
+        : [
+            "สร้าง bar chart แสดง top 10",
+            "เพิ่ม KPI แสดงยอดรวม",
+            "สร้าง dashboard พื้นฐาน",
+          ],
     },
   ]);
   const [input, setInput] = useState("");
@@ -147,6 +450,7 @@ export function AIConfigAssistant({
   );
   const [deleteSessionId, setDeleteSessionId] = useState<string | null>(null);
   const [isLoadingSession, setIsLoadingSession] = useState(true); // ⭐ NEW: Loading state
+  const [sessionInitialized, setSessionInitialized] = useState(false); // ⭐ Flag to prevent re-loading
 
   const chatHistory = useChatHistory({
     userId: user?.uid || "anonymous",
@@ -200,23 +504,20 @@ export function AIConfigAssistant({
                   const updatedMsg = { ...msg, isTyping: false };
 
                   // Schedule diff view update for next tick to avoid setState during render
-                  if (updatedMsg.config && currentConfig && onShowDiff) {
-                    console.log("🔄 Scheduling onShowDiff with:", {
-                      currentConfig,
-                      newConfig: updatedMsg.config,
-                      currentConfigType: typeof currentConfig,
-                      newConfigType: typeof updatedMsg.config,
-                      hasLayout: !!updatedMsg.config.layout,
-                      hasTheme: !!updatedMsg.config.theme,
-                      hasWidgets: !!updatedMsg.config.widgets,
-                      widgetCount: updatedMsg.config.widgets?.length || 0,
-                      explanation: updatedMsg.content.slice(0, 100) + "...",
-                    });
-
+                  if (updatedMsg.config && onShowDiff) {
                     // Use setTimeout to defer the state update
+                    // ใช้ default empty config ถ้าไม่มี currentConfig
+                    const baseConfig = currentConfig || {
+                      layout: "grid",
+                      theme: "light",
+                      gridCols: 12,
+                      gridRowHeight: 100,
+                      widgets: [],
+                    };
+
                     setTimeout(() => {
                       onShowDiff(
-                        currentConfig,
+                        baseConfig,
                         updatedMsg.config,
                         updatedMsg.content.slice(0, 100) + "..."
                       );
@@ -315,6 +616,11 @@ export function AIConfigAssistant({
       setTypingMessageIndex(0);
     }
 
+    // ⭐ Skip if session already initialized
+    if (sessionInitialized) {
+      return;
+    }
+
     // Auto-load last session (ไม่สร้างใหม่จนกว่า user จะส่งข้อความ)
     const initSession = async () => {
       // ถ้ายังไม่มี user ให้ข้าม
@@ -331,8 +637,8 @@ export function AIConfigAssistant({
 
       // ถ้ามี lock อยู่และยังไม่หมดอายุ (5 วินาที) ให้ข้าม
       if (lockTime && now - parseInt(lockTime) < 5000) {
-        console.log("🔒 Session initialization locked, skipping...");
         setIsLoadingSession(false);
+        setSessionInitialized(true);
         return;
       }
 
@@ -342,7 +648,6 @@ export function AIConfigAssistant({
       try {
         // รอให้ sessions โหลดเสร็จก่อน
         if (chatHistory.loading) {
-          console.log("⏳ Waiting for sessions to load...");
           localStorage.removeItem(lockKey);
           return; // ยังไม่ปิด loading ให้รอต่อ
         }
@@ -357,14 +662,12 @@ export function AIConfigAssistant({
             (s) => s.id === lastSessionId
           );
           if (sessionExists) {
-            console.log("📂 Loading last active session:", lastSessionId);
             await handleLoadSession(lastSessionId);
             localStorage.removeItem(lockKey);
-            // ⭐ รอ 0.5 วินาทีก่อนปิด loading เพื่อให้ transition นุ่มนวล
+            setSessionInitialized(true);
             setTimeout(() => setIsLoadingSession(false), 500);
             return;
           } else {
-            console.log("🗑️ Last session not found, removing...");
             localStorage.removeItem(storageKey);
           }
         }
@@ -372,32 +675,37 @@ export function AIConfigAssistant({
         // ถ้าไม่มี lastSessionId แต่มี sessions อยู่ ให้ load session ล่าสุด
         if (chatHistory.sessions.length > 0) {
           const latestSession = chatHistory.sessions[0];
-          console.log("📂 Loading latest session:", latestSession.id);
           await handleLoadSession(latestSession.id);
           localStorage.removeItem(lockKey);
-          // ⭐ รอ 0.5 วินาทีก่อนปิด loading เพื่อให้ transition นุ่มนวล
+          setSessionInitialized(true);
           setTimeout(() => setIsLoadingSession(false), 500);
           return;
         }
 
-        // ✅ ไม่สร้าง session ใหม่ - ให้รอจนกว่า user จะส่งข้อความครั้งแรก
-        console.log("💬 No session found - waiting for first message");
+        // ไม่สร้าง session ใหม่ - ให้รอจนกว่า user จะส่งข้อความครั้งแรก
         localStorage.removeItem(lockKey);
-        // ⭐ รอ 0.5 วินาทีก่อนปิด loading เพื่อให้ transition นุ่มนวล
+        setSessionInitialized(true);
         setTimeout(() => setIsLoadingSession(false), 500);
       } catch (error) {
         console.error("Failed to initialize session:", error);
         localStorage.removeItem(lockKey);
+        setSessionInitialized(true);
         setTimeout(() => setIsLoadingSession(false), 500);
       }
     };
 
-    // เรียกใช้งานเมื่อ sessions โหลดเสร็จแล้ว
-    if (!chatHistory.loading && user?.uid) {
+    // เรียกใช้งานเฉพาะครั้งแรกเมื่อ sessions โหลดเสร็จแล้ว
+    // ⭐ ไม่ trigger อีกครั้งหลังจาก session loaded แล้ว
+    if (
+      !chatHistory.loading &&
+      user?.uid &&
+      isLoadingSession &&
+      !sessionInitialized
+    ) {
       initSession();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatHistory.loading, chatHistory.sessions.length, user?.uid]);
+  }, [chatHistory.loading, user?.uid, isLoadingSession, sessionInitialized]);
 
   useEffect(() => {
     // Auto scroll to bottom when new messages arrive (smooth scroll)
@@ -468,28 +776,24 @@ export function AIConfigAssistant({
     setInput("");
     setIsLoading(true);
 
-    // ✅ สร้าง session ถ้ายังไม่มี (เมื่อส่งข้อความครั้งแรก)
+    // สร้าง session ถ้ายังไม่มี (เมื่อส่งข้อความครั้งแรก)
     let sessionId = chatHistory.currentSessionId;
-    let isNewSession = false; // ⭐ ติดตามว่าเป็น session ใหม่หรือไม่
+    let isNewSession = false;
 
     if (!sessionId && user?.uid) {
       try {
-        console.log("✨ Creating new session with first message...");
         sessionId = await chatHistory.createNewSession(userMessage.content);
-        isNewSession = true; // ⭐ เป็น session ใหม่
+        isNewSession = true;
 
         // บันทึก session ลง localStorage
         const storageKey = `lastChatSession_${tenantId}_${dashboardId}`;
         localStorage.setItem(storageKey, sessionId);
-
-        console.log("✅ Created session:", sessionId);
       } catch (error) {
         console.error("Failed to create session:", error);
       }
     }
 
     // Auto-save user message (ถ้ามี session แล้ว และไม่ใช่ session ใหม่)
-    // ⭐ ถ้าเป็น session ใหม่ ข้อความแรกถูกเก็บไว้แล้วตอนสร้าง session
     if (sessionId && !isNewSession) {
       try {
         await chatHistory.saveMessage(sessionId, {
@@ -530,107 +834,182 @@ export function AIConfigAssistant({
         "ปรับ",
       ];
 
-      // Question keywords (English + Thai)
-      const questionKeywords = [
-        "what",
-        "how",
+      // Question keywords that likely DON'T need config modification
+      const pureQuestionKeywords = [
+        "what is",
+        "how does",
         "why",
-        "when",
-        "where",
-        "who",
-        "can",
-        "should",
-        "is",
-        "are",
-        "does",
         "explain",
-        "tell me",
-        "show me",
-        "อะไร",
-        "ยังไง",
-        "ทำไม",
-        "เมื่อไหร่",
-        "ที่ไหน",
-        "สามารถ",
-        "ควร",
-        "เป็น",
-        "คือ",
-        "มี",
+        "tell me about",
+        "อะไรคือ",
+        "คืออะไร",
         "อธิบาย",
-        "บอก",
-        "แสดง",
+        "หมายความว่า",
+      ];
+
+      // Keywords for creating NEW config from scratch
+      const createNewKeywords = [
+        "สร้าง dashboard",
+        "create dashboard",
+        "new dashboard",
+        "สร้างใหม่",
+        "เริ่มใหม่",
+        "start fresh",
       ];
 
       const hasConfigKeyword = configModifyKeywords.some((keyword) =>
         inputLower.includes(keyword)
       );
 
-      const hasQuestionKeyword = questionKeywords.some((keyword) =>
+      const isPureQuestion = pureQuestionKeywords.some((keyword) =>
         inputLower.includes(keyword)
       );
 
-      // If it's a question OR no config modification keywords, treat as chat
-      const shouldGenerateConfig = hasConfigKeyword && !hasQuestionKeyword;
+      const wantsNewDashboard = createNewKeywords.some((keyword) =>
+        inputLower.includes(keyword)
+      );
 
-      if (shouldGenerateConfig) {
-        // Generate/Modify configuration
-        setLoadingStatus("⚙️ สร้าง Dashboard Configuration...");
+      // ⭐ Greeting keywords - ไม่ต้องทำอะไรพิเศษ แค่ตอบกลับ
+      const greetingKeywords = [
+        "สวัสดี",
+        "หวัดดี",
+        "ดีครับ",
+        "ดีค่ะ",
+        "hello",
+        "hi",
+        "hey",
+        "ขอบคุณ",
+        "thank",
+      ];
 
-        const result = await generateConfigWithAI(tenantId, {
-          prompt: input.trim(),
-          model: selectedModel,
-          context: {
-            tableSchema,
-            currentConfig,
-            dataSource,
-            selectedTable,
-          },
-        });
+      const isGreeting = greetingKeywords.some((keyword) =>
+        inputLower.includes(keyword)
+      );
 
-        setLoadingStatus("✨ เตรียมแสดงผล...");
+      // ⭐ SMART LOGIC:
+      // - คำทักทาย → chat ธรรมดา (ไม่แสดง agent steps)
+      // - มี config + ต้องการแก้ → chat with agent steps
+      // - ไม่มี config + ต้องการสร้าง → generate with agent steps
+      // - คำถามทั่วไป → chat ธรรมดา
+      const hasExistingConfig = currentConfig?.widgets?.length > 0;
+      const shouldUseChat =
+        hasExistingConfig && hasConfigKeyword && !wantsNewDashboard;
+      const shouldGenerate =
+        !isGreeting &&
+        !isPureQuestion &&
+        (!hasExistingConfig || wantsNewDashboard) &&
+        hasConfigKeyword;
+      const isSimpleChat =
+        isGreeting ||
+        isPureQuestion ||
+        (!hasConfigKeyword && !wantsNewDashboard);
 
-        // Use AI's explanation
-        const explanation =
-          result.explanation ||
-          `ผม ${
-            currentConfig ? "ปรับแต่ง" : "สร้าง"
-          } configuration ตามที่คุณขอแล้วครับ\n\n${
-            result.config.widgets
-              ? `📊 ${result.config.widgets.length} widget(s)`
-              : "Configuration พร้อมแล้ว"
-          }`;
+      // AGENT STEPS - Initialize steps for this operation
+      const initSteps: AgentStep[] = [];
 
-        const assistantMessage: Message = {
-          role: "assistant",
-          content: explanation,
-          config: result.config,
-          suggestions: result.suggestions || [],
-          timestamp: new Date(),
-          isTyping: true,
-        };
-
-        setMessages((prev) => {
-          const newMessages = [...prev, assistantMessage];
-          setTypingMessageIndex(newMessages.length - 1);
-          return newMessages;
-        });
-
-        // Auto-save assistant message
-        if (sessionId) {
-          autoSaveAssistantMessage(sessionId, assistantMessage);
-        }
-      } else {
-        // General chat
-        setLoadingStatus("💬 ประมวลผลคำถามของคุณ...");
+      if (isSimpleChat) {
+        // ⭐ SIMPLE CHAT - ไม่มี agent steps (สำหรับทักทาย, คำถามทั่วไป)
+        // ⚠️ ไม่ส่ง config ไปเพื่อป้องกัน AI แก้ไขโดยไม่ได้ตั้งใจ
+        setLoadingStatus("💬 ตอบกลับ...");
 
         const history = messages
-          .filter((m) => !m.config) // Don't include config messages in history
+          .filter((m) => !m.config)
+          .slice(-6)
           .map((m) => ({
             role: m.role === "user" ? "user" : "model",
             content: m.content,
           }));
 
-        setLoadingStatus("🤖 ปรึกษากับ AI Engine...");
+        const result = await chatWithAI(tenantId, {
+          message: input.trim(),
+          model: selectedModel,
+          history,
+          context: {
+            // ⭐ ไม่ส่ง config ไป - แค่ตอบกลับธรรมดา
+            tableSchema,
+            selectedTable,
+          },
+        });
+
+        const assistantMessage: Message = {
+          role: "assistant",
+          content: result.response,
+          suggestions: result.suggestions || [],
+          timestamp: new Date(),
+          isTyping: false,
+        };
+
+        setMessages((prev) => [...prev, assistantMessage]);
+
+        if (sessionId) {
+          autoSaveAssistantMessage(sessionId, assistantMessage);
+        }
+      } else if (shouldUseChat) {
+        // ⭐ MODIFY existing config via chat (faster, partial updates)
+
+        // Set agent steps
+        initSteps.push(
+          {
+            id: "read",
+            type: "read",
+            title: "อ่าน Config ปัจจุบัน",
+            status: "running",
+            details: `${currentConfig?.widgets?.length || 0} widgets`,
+          },
+          {
+            id: "analyze",
+            type: "analyze",
+            title: "วิเคราะห์คำขอ",
+            status: "pending",
+          },
+          {
+            id: "edit",
+            type: "edit",
+            title: "แก้ไข Config",
+            status: "pending",
+          },
+          {
+            id: "diff",
+            type: "complete",
+            title: "แสดง Diff",
+            status: "pending",
+          }
+        );
+        setCurrentAgentSteps(initSteps);
+        setLoadingStatus("📖 อ่าน Config ปัจจุบัน...");
+
+        // Step 1: Read config - complete
+        await new Promise((r) => setTimeout(r, 200));
+        setCurrentAgentSteps((prev) =>
+          prev.map((s) =>
+            s.id === "read"
+              ? { ...s, status: "complete" }
+              : s.id === "analyze"
+              ? { ...s, status: "running" }
+              : s
+          )
+        );
+        setLoadingStatus("🔍 วิเคราะห์คำขอ...");
+
+        const history = messages
+          .filter((m) => !m.config)
+          .slice(-6) // Keep last 6 messages for context
+          .map((m) => ({
+            role: m.role === "user" ? "user" : "model",
+            content: m.content,
+          }));
+
+        // Step 2: Analyze - complete, Edit - running
+        setCurrentAgentSteps((prev) =>
+          prev.map((s) =>
+            s.id === "analyze"
+              ? { ...s, status: "complete" }
+              : s.id === "edit"
+              ? { ...s, status: "running" }
+              : s
+          )
+        );
+        setLoadingStatus("✏️ กำลังแก้ไข Config...");
 
         const result = await chatWithAI(tenantId, {
           message: input.trim(),
@@ -644,25 +1023,221 @@ export function AIConfigAssistant({
           },
         });
 
-        setLoadingStatus("💡 เตรียมคำตอบ...");
+        // Parse ---CHANGES--- block from response
+        const { cleanResponse, parsedChanges } = parseChangesFromResponse(
+          result.response
+        );
 
-        console.log("🔍 Chat result:", result);
-        console.log("🔍 Config from backend:", result.config);
+        // Use parsed changes if available, otherwise use from API
+        const finalConfigChanges = parsedChanges || result.configChanges;
+
+        // Step 3: Edit complete, Diff running
+        setCurrentAgentSteps((prev) =>
+          prev.map((s) =>
+            s.id === "edit"
+              ? {
+                  ...s,
+                  status: "complete",
+                  details:
+                    result.config || finalConfigChanges
+                      ? `แก้ไขสำเร็จ`
+                      : "ไม่มีการเปลี่ยนแปลง",
+                }
+              : s.id === "diff"
+              ? { ...s, status: result.config ? "running" : "complete" }
+              : s
+          )
+        );
+        setLoadingStatus("✨ เตรียมแสดงผล...");
 
         const assistantMessage: Message = {
           role: "assistant",
-          content: result.response,
+          content: cleanResponse,
+          config: result.config,
+          configChanges: finalConfigChanges,
+          suggestions: result.suggestions || [],
+          timestamp: new Date(),
+          isTyping: false,
+          agentSteps: initSteps.map((s) => ({
+            ...s,
+            status: "complete" as const,
+          })),
+        };
+
+        setMessages((prev) => [...prev, assistantMessage]);
+
+        // Trigger diff if config was modified
+        if (result.config && onShowDiff) {
+          setCurrentAgentSteps((prev) =>
+            prev.map((s) =>
+              s.id === "diff" ? { ...s, status: "complete" } : s
+            )
+          );
+          setTimeout(() => {
+            onShowDiff(
+              currentConfig,
+              result.config,
+              result.response?.slice(0, 100) + "..."
+            );
+          }, 100);
+        }
+
+        // Clear agent steps after completion
+        setTimeout(() => setCurrentAgentSteps([]), 500);
+
+        // Auto-save
+        if (sessionId) {
+          autoSaveAssistantMessage(sessionId, assistantMessage);
+        }
+      } else if (shouldGenerate) {
+        // ⭐ GENERATE new config (for new dashboards or major changes)
+
+        // Set agent steps for generate
+        initSteps.push(
+          {
+            id: "analyze",
+            type: "analyze",
+            title: "วิเคราะห์ความต้องการ",
+            status: "running",
+          },
+          {
+            id: "schema",
+            type: "read",
+            title: "ตรวจสอบ Schema",
+            status: "pending",
+            details: tableSchema
+              ? `${tableSchema.columns?.length || 0} columns`
+              : "ไม่มี schema",
+          },
+          {
+            id: "generate",
+            type: "edit",
+            title: "สร้าง Dashboard",
+            status: "pending",
+          },
+          {
+            id: "diff",
+            type: "complete",
+            title: "แสดง Diff",
+            status: "pending",
+          }
+        );
+        setCurrentAgentSteps(initSteps);
+        setLoadingStatus("🔍 วิเคราะห์ความต้องการ...");
+
+        await new Promise((r) => setTimeout(r, 300));
+        setCurrentAgentSteps((prev) =>
+          prev.map((s) =>
+            s.id === "analyze"
+              ? { ...s, status: "complete" }
+              : s.id === "schema"
+              ? { ...s, status: "running" }
+              : s
+          )
+        );
+        setLoadingStatus("📋 ตรวจสอบ Schema...");
+
+        await new Promise((r) => setTimeout(r, 200));
+        setCurrentAgentSteps((prev) =>
+          prev.map((s) =>
+            s.id === "schema"
+              ? { ...s, status: "complete" }
+              : s.id === "generate"
+              ? { ...s, status: "running" }
+              : s
+          )
+        );
+        setLoadingStatus("🎨 สร้าง Dashboard ใหม่...");
+
+        const result = await generateConfigWithAI(tenantId, {
+          prompt: input.trim(),
+          model: selectedModel,
+          context: {
+            tableSchema,
+            currentConfig: wantsNewDashboard ? null : currentConfig,
+            dataSource,
+            selectedTable,
+          },
+        });
+
+        setLoadingStatus("✨ เตรียมแสดงผล...");
+
+        // Use AI's explanation
+        const explanation =
+          result.explanation ||
+          `ผม ${
+            currentConfig ? "ปรับแต่ง" : "สร้าง"
+          } configuration ตามที่คุณขอแล้วครับ\n\n${
+            result.config?.widgets
+              ? `📊 ${result.config.widgets.length} widget(s)`
+              : "Configuration พร้อมแล้ว"
+          }`;
+
+        const assistantMessage: Message = {
+          role: "assistant",
+          content: explanation,
           config: result.config,
           suggestions: result.suggestions || [],
           timestamp: new Date(),
-          isTyping: true,
+          isTyping: false,
         };
 
-        setMessages((prev) => {
-          const newMessages = [...prev, assistantMessage];
-          setTypingMessageIndex(newMessages.length - 1);
-          return newMessages;
-        });
+        setMessages((prev) => [...prev, assistantMessage]);
+
+        // TRIGGER DIFF IMMEDIATELY if we have config
+        // Update step: generate complete
+        setCurrentAgentSteps((prev) =>
+          prev.map((s) =>
+            s.id === "generate"
+              ? {
+                  ...s,
+                  status: "complete",
+                  details: `${
+                    result.config?.widgets?.length || 0
+                  } widgets สร้างแล้ว`,
+                }
+              : s.id === "diff"
+              ? { ...s, status: "running" }
+              : s
+          )
+        );
+
+        if (result.config && onShowDiff) {
+          const baseConfig = currentConfig || {
+            layout: "grid",
+            theme: "light",
+            gridCols: 12,
+            gridRowHeight: 100,
+            widgets: [],
+          };
+
+          // Update step: diff complete
+          setCurrentAgentSteps((prev) =>
+            prev.map((s) =>
+              s.id === "diff" ? { ...s, status: "complete" } : s
+            )
+          );
+
+          // Trigger diff immediately
+          setTimeout(() => {
+            onShowDiff(
+              baseConfig,
+              result.config,
+              explanation.slice(0, 100) + "..."
+            );
+          }, 100);
+        } else {
+          setCurrentAgentSteps((prev) =>
+            prev.map((s) =>
+              s.id === "diff"
+                ? { ...s, status: "complete", details: "ไม่มี config" }
+                : s
+            )
+          );
+        }
+
+        // Clear agent steps after completion
+        setTimeout(() => setCurrentAgentSteps([]), 500);
 
         // Auto-save assistant message
         if (sessionId) {
@@ -674,6 +1249,7 @@ export function AIConfigAssistant({
       toast.error(error.message || "Failed to get response from AI");
 
       setLoadingStatus("❌ เกิดข้อผิดพลาด...");
+      setCurrentAgentSteps([]); // Clear agent steps on error
 
       const errorMessage: Message = {
         role: "assistant",
@@ -736,9 +1312,6 @@ export function AIConfigAssistant({
     try {
       const session = await chatHistory.loadSession(sessionId);
       if (session) {
-        console.log("📂 Loaded session:", session);
-        console.log("📝 Messages in session:", session.messages);
-
         // Convert to Message format
         const loadedMessages: Message[] = session.messages.map((msg: any) => ({
           role: msg.role as "user" | "assistant",
@@ -751,8 +1324,6 @@ export function AIConfigAssistant({
           isTyping: false,
         }));
 
-        console.log("✅ Converted messages:", loadedMessages);
-
         setMessages(loadedMessages);
         setCurrentSessionTitle(session.title);
         setShowHistoryDialog(false);
@@ -760,9 +1331,6 @@ export function AIConfigAssistant({
         // บันทึก session ที่เปิดลง localStorage
         const storageKey = `lastChatSession_${tenantId}_${dashboardId}`;
         localStorage.setItem(storageKey, sessionId);
-
-        // ⭐ ลบ toast ออก - ไม่ต้องแจ้งเตือนทุกครั้งที่ load
-        // toast.success(`โหลด "${session.title}" แล้ว`);
       }
     } catch (error) {
       console.error("Failed to load session:", error);
@@ -1010,167 +1578,181 @@ export function AIConfigAssistant({
               </div>
             ) : (
               <div className="space-y-2">
-                {messages.map((message, index) => (
-                  <div
-                    key={index}
-                    className={`flex ${
-                      message.role === "user" ? "justify-end" : "justify-start"
-                    }`}
-                  >
+                {messages.map((message, index) => {
+                  // ⭐ Use stored configChanges directly - don't re-parse
+                  // Only parse if message.configChanges is not available (legacy messages)
+                  let displayContent = message.content;
+                  let displayChanges: ConfigChanges | undefined =
+                    message.configChanges;
+
+                  // Only parse for assistant messages without stored configChanges
+                  if (message.role === "assistant" && !message.configChanges) {
+                    const { cleanResponse, parsedChanges } =
+                      parseChangesFromResponse(message.content);
+                    displayContent = cleanResponse;
+                    displayChanges = parsedChanges || undefined;
+                  }
+
+                  return (
                     <div
-                      className={`max-w-[80%] rounded-lg p-2.5 ${
+                      key={index}
+                      className={`flex ${
                         message.role === "user"
-                          ? "bg-blue-600 text-white text-sm"
-                          : "bg-gray-100 text-gray-900 text-sm"
+                          ? "justify-end"
+                          : "justify-start"
                       }`}
                     >
-                      {/* Message Content with Markdown */}
-                      <div className="text-sm prose prose-sm max-w-none">
-                        {message.isTyping && index === typingMessageIndex ? (
-                          <>
-                            {displayedContent}
-                            <span className="inline-block w-1 h-4 bg-current ml-0.5 animate-pulse" />
-                          </>
-                        ) : (
-                          <ReactMarkdown
-                            components={{
-                              // Inline code (for colors)
-                              code: ({ className, children, ...props }) => {
-                                // Check if this is inline code by looking at className
-                                const isInline =
-                                  !className?.includes("language-");
-                                return isInline ? (
-                                  <code
-                                    className="px-1.5 py-0.5 rounded text-xs font-mono bg-gray-800 text-white"
+                      <div
+                        className={`max-w-[80%] rounded-lg p-2.5 ${
+                          message.role === "user"
+                            ? "bg-blue-600 text-white text-sm"
+                            : "bg-gray-100 text-gray-900 text-sm"
+                        }`}
+                      >
+                        {/* Message Content with Markdown */}
+                        <div className="text-sm prose prose-sm max-w-none">
+                          {message.isTyping && index === typingMessageIndex ? (
+                            <>
+                              {displayedContent}
+                              <span className="inline-block w-1 h-4 bg-current ml-0.5 animate-pulse" />
+                            </>
+                          ) : (
+                            <ReactMarkdown
+                              components={{
+                                // Inline code (for colors)
+                                code: ({ className, children, ...props }) => {
+                                  // Check if this is inline code by looking at className
+                                  const isInline =
+                                    !className?.includes("language-");
+                                  return isInline ? (
+                                    <code
+                                      className="px-1.5 py-0.5 rounded text-xs font-mono bg-gray-800 text-white"
+                                      {...props}
+                                    >
+                                      {children}
+                                    </code>
+                                  ) : (
+                                    <code
+                                      className="block px-2 py-1 rounded text-xs font-mono bg-gray-800 text-white overflow-x-auto"
+                                      {...props}
+                                    >
+                                      {children}
+                                    </code>
+                                  );
+                                },
+                                // Bold text
+                                strong: ({ children, ...props }) => (
+                                  <strong className="font-bold" {...props}>
+                                    {children}
+                                  </strong>
+                                ),
+                                // Lists
+                                ul: ({ children, ...props }) => (
+                                  <ul
+                                    className="list-disc ml-4 space-y-1"
                                     {...props}
                                   >
                                     {children}
-                                  </code>
-                                ) : (
-                                  <code
-                                    className="block px-2 py-1 rounded text-xs font-mono bg-gray-800 text-white overflow-x-auto"
-                                    {...props}
-                                  >
+                                  </ul>
+                                ),
+                                li: ({ children, ...props }) => (
+                                  <li className="text-sm" {...props}>
                                     {children}
-                                  </code>
-                                );
-                              },
-                              // Bold text
-                              strong: ({ children, ...props }) => (
-                                <strong className="font-bold" {...props}>
-                                  {children}
-                                </strong>
-                              ),
-                              // Lists
-                              ul: ({ children, ...props }) => (
-                                <ul
-                                  className="list-disc ml-4 space-y-1"
-                                  {...props}
-                                >
-                                  {children}
-                                </ul>
-                              ),
-                              li: ({ children, ...props }) => (
-                                <li className="text-sm" {...props}>
-                                  {children}
-                                </li>
-                              ),
-                            }}
-                          >
-                            {message.content}
-                          </ReactMarkdown>
-                        )}
-                      </div>
-
-                      {/* Show suggestion badge if config is available */}
-                      {message.config && !message.isTyping && (
-                        <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">
-                          <p className="font-semibold text-blue-900 mb-1 flex items-center gap-2">
-                            <Sparkles className="h-4 w-4" />
-                            AI Configuration Ready
-                          </p>
-                          <p className="text-blue-700 text-xs">
-                            {currentConfig
-                              ? "Check the diff view in the editor to review changes →"
-                              : "This configuration has been generated and can be applied →"}
-                          </p>
+                                  </li>
+                                ),
+                              }}
+                            >
+                              {displayContent}
+                            </ReactMarkdown>
+                          )}
                         </div>
-                      )}
 
-                      {/* Show suggestions if available */}
-                      {message.suggestions &&
-                        message.suggestions.length > 0 &&
-                        !message.isTyping && (
-                          <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-                            <p className="font-semibold text-green-900 mb-2 flex items-center gap-2">
-                              <Lightbulb className="h-4 w-4" />
-                              คำแนะนำถัดไป / Next Suggestions
-                            </p>
-                            <div className="space-y-1">
-                              {message.suggestions.map((suggestion, idx) => (
-                                <button
-                                  key={idx}
-                                  onClick={() => {
-                                    // Special handling for column suggestion
-                                    if (
-                                      suggestion.includes(
-                                        "Available Columns"
-                                      ) &&
-                                      tableSchema?.columns
-                                    ) {
-                                      handleShowColumnsToAI();
-                                    } else {
-                                      setInput(suggestion);
-                                    }
-                                  }}
-                                  className="block w-full text-left text-xs text-green-700 hover:text-green-900 hover:bg-green-100 p-2 rounded border border-green-200 hover:border-green-300 transition-colors"
-                                >
-                                  💡 {suggestion}
-                                </button>
-                              ))}
-
-                              {/* Show columns button if no table schema and it's the first conversation */}
-                              {!tableSchema &&
-                                tableSchema?.columns?.length === 0 &&
-                                messages.length <= 2 && (
-                                  <button
-                                    onClick={handleShowColumnsToAI}
-                                    className="block w-full text-left text-xs bg-blue-100 text-blue-700 hover:text-blue-900 hover:bg-blue-200 p-2 rounded border border-blue-200 hover:border-blue-300 transition-colors font-medium"
-                                  >
-                                    🔍 แสดง Columns ให้ AI ดู (Auto-send columns
-                                    info)
-                                  </button>
-                                )}
-                            </div>
-                          </div>
+                        {/* ⭐ NEW: Show config changes if available */}
+                        {displayChanges && !message.isTyping && (
+                          <ConfigChangesDisplay changes={displayChanges} />
                         )}
 
-                      <div className="text-[10px] opacity-60 mt-1">
-                        {message.timestamp.toLocaleTimeString("th-TH", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
+                        {/* Show suggestions if available */}
+                        {message.suggestions &&
+                          message.suggestions.length > 0 &&
+                          !message.isTyping && (
+                            <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                              <p className="font-semibold text-green-900 mb-2 flex items-center gap-2">
+                                <Lightbulb className="h-4 w-4" />
+                                คำแนะนำถัดไป / Next Suggestions
+                              </p>
+                              <div className="space-y-1">
+                                {message.suggestions.map((suggestion, idx) => (
+                                  <button
+                                    key={idx}
+                                    onClick={() => {
+                                      // Special handling for column suggestion
+                                      if (
+                                        suggestion.includes(
+                                          "Available Columns"
+                                        ) &&
+                                        tableSchema?.columns
+                                      ) {
+                                        handleShowColumnsToAI();
+                                      } else {
+                                        setInput(suggestion);
+                                      }
+                                    }}
+                                    className="block w-full text-left text-xs text-green-700 hover:text-green-900 hover:bg-green-100 p-2 rounded border border-green-200 hover:border-green-300 transition-colors"
+                                  >
+                                    💡 {suggestion}
+                                  </button>
+                                ))}
+
+                                {/* Show columns button if no table schema and it's the first conversation */}
+                                {!tableSchema &&
+                                  tableSchema?.columns?.length === 0 &&
+                                  messages.length <= 2 && (
+                                    <button
+                                      onClick={handleShowColumnsToAI}
+                                      className="block w-full text-left text-xs bg-blue-100 text-blue-700 hover:text-blue-900 hover:bg-blue-200 p-2 rounded border border-blue-200 hover:border-blue-300 transition-colors font-medium"
+                                    >
+                                      🔍 แสดง Columns ให้ AI ดู (Auto-send
+                                      columns info)
+                                    </button>
+                                  )}
+                              </div>
+                            </div>
+                          )}
+
+                        <div className="text-[10px] opacity-60 mt-1">
+                          {message.timestamp.toLocaleTimeString("th-TH", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-                {/* Typing indicator while loading */}
+                  );
+                })}
+                {/* ⭐ Agent Steps & Loading indicator */}
                 {isLoading && (
                   <div className="flex justify-start">
-                    <div className="bg-gray-100 rounded-lg p-2">
+                    <div className="bg-gray-100 rounded-lg p-3 max-w-[90%]">
+                      {/* Agent Steps Display */}
+                      {currentAgentSteps.length > 0 && (
+                        <AgentStepsDisplay steps={currentAgentSteps} />
+                      )}
+
+                      {/* Status indicator */}
                       <div className="flex items-center gap-2 text-xs text-gray-600">
                         <div className="flex gap-1">
-                          <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" />
+                          <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" />
                           <span
-                            className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
+                            className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce"
                             style={{ animationDelay: "0.1s" }}
                           />
                           <span
-                            className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
+                            className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce"
                             style={{ animationDelay: "0.2s" }}
                           />
                         </div>
-                        <span className="text-xs">
+                        <span className="text-xs font-medium">
                           {loadingStatus || "กำลังคิด..."}
                         </span>
                       </div>

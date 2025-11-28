@@ -68,7 +68,7 @@ dashboardsRouter.get("/:tenantId/dashboards", async (req: any, res: any) => {
     const user = req.user;
 
     // Verify user has access to this tenant (Super Admin can access any tenant)
-    if (!user.isSuperAdmin && user.tenantId !== tenantId) {
+    if (user.isSuperAdmin !== true && user.tenantId !== tenantId) {
       return res
         .status(403)
         .json({ error: "Access denied to this tenant's dashboards" });
@@ -135,7 +135,7 @@ dashboardsRouter.get(
       const user = req.user;
 
       // Verify user has access to this tenant
-      if (!user.isSuperAdmin && user.tenantId !== tenantId) {
+      if (user.isSuperAdmin !== true && user.tenantId !== tenantId) {
         return res
           .status(403)
           .json({ error: "Access denied to this tenant's dashboards" });
@@ -179,7 +179,7 @@ dashboardsRouter.get(
       const user = req.user;
 
       // Verify user has access (Super Admin can access any tenant)
-      if (!user.isSuperAdmin && user.tenantId !== tenantId) {
+      if (user.isSuperAdmin !== true && user.tenantId !== tenantId) {
         return res
           .status(403)
           .json({ error: "Access denied to this dashboard" });
@@ -248,7 +248,7 @@ dashboardsRouter.post(
       const user = req.user;
 
       // Verify user has access (Super Admin can access any tenant)
-      if (!user.isSuperAdmin && user.tenantId !== tenantId) {
+      if (user.isSuperAdmin !== true && user.tenantId !== tenantId) {
         return res
           .status(403)
           .json({ error: "Access denied to create dashboard in this tenant" });
@@ -331,7 +331,7 @@ dashboardsRouter.put(
       const user = req.user;
 
       // Verify user has access (Super Admin can access any tenant)
-      if (!user.isSuperAdmin && user.tenantId !== tenantId) {
+      if (user.isSuperAdmin !== true && user.tenantId !== tenantId) {
         return res
           .status(403)
           .json({ error: "Access denied to update this dashboard" });
@@ -373,7 +373,7 @@ dashboardsRouter.delete(
       const user = req.user;
 
       // Verify user has access (Super Admin can access any tenant)
-      if (!user.isSuperAdmin && user.tenantId !== tenantId) {
+      if (user.isSuperAdmin !== true && user.tenantId !== tenantId) {
         return res
           .status(403)
           .json({ error: "Access denied to delete this dashboard" });
@@ -417,7 +417,7 @@ dashboardsRouter.get(
       const user = req.user;
 
       // Verify user has access (Super Admin can access any tenant)
-      if (!user.isSuperAdmin && user.tenantId !== tenantId) {
+      if (user.isSuperAdmin !== true && user.tenantId !== tenantId) {
         return res
           .status(403)
           .json({ error: "Access denied to this dashboard" });
@@ -460,7 +460,7 @@ dashboardsRouter.get(
       const user = req.user;
 
       // Verify user has access (Super Admin can access any tenant)
-      if (!user.isSuperAdmin && user.tenantId !== tenantId) {
+      if (user.isSuperAdmin !== true && user.tenantId !== tenantId) {
         return res.status(403).json({ error: "Access denied" });
       }
 
@@ -500,7 +500,7 @@ dashboardsRouter.post(
       const user = req.user;
 
       // Verify user has access (Super Admin can access any tenant)
-      if (!user.isSuperAdmin && user.tenantId !== tenantId) {
+      if (user.isSuperAdmin !== true && user.tenantId !== tenantId) {
         return res.status(403).json({ error: "Access denied" });
       }
 
@@ -570,7 +570,7 @@ dashboardsRouter.put(
       const user = req.user;
 
       // Verify user has access (Super Admin can access any tenant)
-      if (!user.isSuperAdmin && user.tenantId !== tenantId) {
+      if (user.isSuperAdmin !== true && user.tenantId !== tenantId) {
         return res.status(403).json({ error: "Access denied" });
       }
 
@@ -624,7 +624,7 @@ dashboardsRouter.put(
       const user = req.user;
 
       // Verify user has access (Super Admin can access any tenant)
-      if (!user.isSuperAdmin && user.tenantId !== tenantId) {
+      if (user.isSuperAdmin !== true && user.tenantId !== tenantId) {
         return res.status(403).json({ error: "Access denied" });
       }
 

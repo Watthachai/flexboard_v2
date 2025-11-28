@@ -135,6 +135,80 @@ function isDashboardRelated(prompt: string): boolean {
   );
 }
 
+// ⭐ NEW: Apply partial changes to config
+function applyConfigChanges(currentConfig: any, changes: any): any {
+  try {
+    const config = JSON.parse(JSON.stringify(currentConfig)); // Deep clone
+
+    switch (changes.action) {
+      case "update":
+        if (changes.targetType === "widget" && changes.targetId) {
+          const widgetIndex = config.widgets?.findIndex(
+            (w: any) => w.id === changes.targetId
+          );
+          if (widgetIndex >= 0 && changes.changes) {
+            // Apply each change using dot notation
+            for (const [path, value] of Object.entries(changes.changes)) {
+              setNestedValue(config.widgets[widgetIndex], path, value);
+            }
+            console.log(`✅ Updated widget: ${changes.targetId}`);
+          }
+        } else if (changes.targetType === "theme") {
+          config.theme = changes.changes.theme || changes.changes;
+        } else if (changes.targetType === "globalSettings") {
+          Object.assign(config.globalSettings || {}, changes.changes);
+        }
+        break;
+
+      case "add":
+        if (changes.targetType === "widget" && changes.newWidget) {
+          config.widgets = config.widgets || [];
+          config.widgets.push(changes.newWidget);
+          console.log(`✅ Added widget: ${changes.newWidget.id}`);
+        } else if (changes.targetType === "filter" && changes.newFilter) {
+          config.filters = config.filters || [];
+          config.filters.push(changes.newFilter);
+        }
+        break;
+
+      case "remove":
+        if (changes.targetType === "widget" && changes.targetId) {
+          config.widgets = config.widgets?.filter(
+            (w: any) => w.id !== changes.targetId
+          );
+          console.log(`✅ Removed widget: ${changes.targetId}`);
+        } else if (changes.targetType === "filter" && changes.targetId) {
+          config.filters = config.filters?.filter(
+            (f: any) => f.id !== changes.targetId
+          );
+        }
+        break;
+    }
+
+    return config;
+  } catch (e) {
+    console.error("❌ Error applying config changes:", e);
+    return null;
+  }
+}
+
+// Helper: Set nested value using dot notation (e.g., "styleConfig.colors[0]")
+function setNestedValue(obj: any, path: string, value: any) {
+  const parts = path.replace(/\[(\d+)\]/g, ".$1").split(".");
+  let current = obj;
+
+  for (let i = 0; i < parts.length - 1; i++) {
+    const part = parts[i];
+    if (!(part in current)) {
+      current[part] = isNaN(Number(parts[i + 1])) ? {} : [];
+    }
+    current = current[part];
+  }
+
+  const lastPart = parts[parts.length - 1];
+  current[lastPart] = value;
+}
+
 // Generate next step suggestions based on context and user language
 function generateSuggestions(
   currentConfig: any,
@@ -272,7 +346,8 @@ router.post(
         });
       }
 
-      // Get datasource schema and sample data if provided
+      // ⭐ SIMPLIFIED: Don't require sample data - just work with config directly
+      // Get datasource schema if provided (but don't fetch sample data)
       const {
         tableSchema,
         currentConfig,
@@ -281,45 +356,8 @@ router.post(
         selectedTable,
       } = context || {};
 
-      // If no table schema is provided and user wants to create dashboard, ask to see columns first
-      if (
-        !tableSchema &&
-        !currentConfig &&
-        (prompt.includes("สร้าง") ||
-          prompt.includes("create") ||
-          prompt.includes("dashboard"))
-      ) {
-        return res.json({
-          explanation:
-            "ผมขอดูข้อมูลในตารางของคุณก่อนนะครับ เพื่อจะได้แนะนำ widget ที่เหมาะสมให้คุณครับ\n\nขั้นตอน:\n1. ไปที่ Columns tab ด้านขวา\n2. ดู Available Columns ที่มี\n3. กลับมาคุยกับผมใหม่ แล้วบอกว่าเห็น columns อะไรบ้าง\n\nหรือถ้าเห็น columns แล้ว สามารถบอกผมได้เลยว่ามี field อะไรบ้าง แล้วผมจะแนะนำ dashboard ที่เหมาะสมให้ครับ",
-          config: null,
-          suggestions: [
-            "ดู Available Columns ใน Columns tab",
-            "บอกผมว่าเห็น field อะไรบ้างในตาราง",
-            "ถามเกี่ยวกับ widget types ที่มี",
-          ],
-        });
-      }
-
-      // Try to get sample data if we have data source and table
-      let sampleData = null;
-      if (dataSource && selectedTable) {
-        console.log(
-          `🔍 [AI Assistant] Fetching sample data from ${selectedTable}...`
-        );
-        sampleData = await getSampleData(dataSource, selectedTable, 3);
-        if (sampleData.success && sampleData.data) {
-          console.log(
-            `✅ [AI Assistant] Got ${sampleData.data.length} sample records`
-          );
-        } else {
-          console.log(
-            `❌ [AI Assistant] Failed to get sample data: ${
-              sampleData.error || "Unknown error"
-            }`
-          );
-        }
-      }
+      // ⭐ REMOVED: No longer require table schema to generate config
+      // User can directly ask to create widgets
 
       // Get Gemini client (will initialize if needed)
       const geminiClient = getGeminiClient();
@@ -328,91 +366,51 @@ router.post(
       const selectedModel = model || "gemini-2.5-flash";
 
       // Build system prompt with context
-      const systemPrompt = `You are an intelligent dashboard configuration agent with conversational capabilities. You work incrementally with users to build and refine dashboards through natural conversation.
-
-CONVERSATION FLOW STRATEGY:
-1. If this is the first interaction and no columns are provided: ASK TO SEE COLUMNS FIRST
-2. If columns are provided: ANALYZE and SUGGEST appropriate visualizations
-3. In follow-up messages: BUILD on previous suggestions and refine based on user feedback
+      const systemPrompt = `You are an intelligent dashboard configuration agent. Your primary job is to CREATE and MODIFY dashboard configurations based on user requests.
 
 LANGUAGE SUPPORT:
-- You can understand and respond in both English and Thai (ภาษาไทย)
-- If user asks in Thai, respond in Thai
-- If user asks in English, respond in English
-- Your explanations should match the user's language
+- Understand and respond in both English and Thai (ภาษาไทย)
+- Match your response language to the user's question
 
-CONVERSATION STARTER MODE:
-If no table schema or current config is provided, respond in this conversational format:
+YOUR PRIMARY JOB:
+1. READ the current config (if provided)
+2. UNDERSTAND what user wants to change/add/remove
+3. GENERATE the complete updated config
+4. EXPLAIN what you changed
+
+⚠️ IMPORTANT: ALWAYS RETURN A COMPLETE CONFIG
+- Never return config: null
+- If user asks to modify, return the FULL modified config
+- If user asks to create, return a NEW complete config
+
+RESPONSE FORMAT (REQUIRED):
+You must return a JSON object with these fields:
 {
-  "explanation": "ผมขอดูข้อมูลในตารางของคุณก่อนนะครับ ว่ามี column อะไรบ้าง เพื่อจะได้แนะนำ widget ที่เหมาะสมให้คุณครับ กรุณาเลือกตารางและดูข้อมูลใน Columns tab ก่อนนะครับ",
-  "config": null,
-  "suggestions": [
-    "เลือกตารางและดู Available Columns",
-    "กลับมาคุยกับผมใหม่หลังจากเห็น columns แล้ว",
-    "ถามเกี่ยวกับ widget types ที่มี"
-  ]
-}
-
-COLUMN ANALYSIS MODE:
-When you have table schema, provide detailed analysis:
-{
-  "explanation": "จากข้อมูลที่เห็น มี columns ที่น่าสนใจมากครับ! เช่น dataDate สำหรับแกนเวลา, qtyFromThisDoc และ totalFromBuyPrice สำหรับแสดงยอดและจำนวน, prodName และ prodGrp สำหรับจัดกลุ่มสินค้า แนะนำให้เริ่มจาก KPI card แสดงยอดรวม + Bar chart เปรียบเทียบสินค้า + Line chart แสดงแนวโน้มตามวันที่ครับ",
-  "config": {
-    // Generated based on available columns
-  },
-  "suggestions": [
-    "เพิ่ม Time series chart ด้วย dataDate",
-    "สร้าง Product comparison ด้วย prodName", 
-    "แสดง Age analysis ด้วย ageBucket"
-  ]
-}
-
-YOUR ROLE AS AN AGENT:
-1. ANALYZE the current dashboard configuration (if provided)
-2. UNDERSTAND what the user wants to change/add (in any language)
-3. SUGGEST incremental modifications (keep existing, modify, add new, or remove)
-4. EXPLAIN your reasoning and what will change (in user's language)
-5. Generate ONLY the modified parts or full config as needed
-
-WORKING MODE:
-- If currentConfig exists: Work incrementally, preserve existing widgets unless user asks to change/remove
-- If no currentConfig: Generate fresh configuration
-- Always explain what you're keeping, changing, or adding
-
-RESPONSE FORMAT (for config generation):
-You must return a JSON object with THREE parts:
-{
-  "explanation": "Brief explanation of what you're doing in the same language as user's request (e.g., 'I'm keeping your existing 2 KPI widgets and adding a new bar chart to show sales by product.' or 'ผมจะเก็บ KPI widget 2 อันที่มีอยู่ และเพิ่ม bar chart ใหม่เพื่อแสดงยอดขายตามสินค้า')",
+  "explanation": "คำอธิบายสิ่งที่ทำ (ภาษาเดียวกับที่ user ใช้)",
   "config": {
     "layout": "grid",
     "theme": "light",
     "gridCols": 12,
     "gridRowHeight": 100,
-    "widgets": [...]
+    "widgets": [
+      // ... all widgets
+    ]
   },
-  "suggestions": [
-    "คำแนะนำการปรับปรุงหรือเพิ่มเติมถัดไป",
-    "Next improvement or addition suggestion",
-    "อีกหนึ่งข้อเสนอแนะ"
-  ]
+  "suggestions": ["คำแนะนำถัดไป 1", "คำแนะนำถัดไป 2", "คำแนะนำถัดไป 3"]
 }
 
-AGENT COMMANDS YOU UNDERSTAND (English & Thai):
-- "add/create X" / "เพิ่ม/สร้าง X" → Add new widget, keep existing
-- "change/modify X" / "แก้ไข/เปลี่ยน X" → Update specific widget
-- "remove/delete X" / "ลบ X" → Remove specific widget
-- "keep X, but change Y" / "เก็บ X แต่เปลี่ยน Y" → Preserve some, modify others
-- "replace X with Y" / "แทนที่ X ด้วย Y" → Replace specific widget
-- "start over" / "เริ่มใหม่" → Generate fresh config
-
-DASHBOARD CONFIG STRUCTURE:
-{
-  "layout": "grid",
-  "theme": "light",
-  "gridCols": 12,
-  "gridRowHeight": 100,
-  "widgets": [...]
-}
+WIDGET TYPES (All 11 supported):
+- bar: Bar  ​​​​​​​​​​chart for comparing categories
+- line: Line chart for trends over time  
+- area: Area chart for trend visualization with fill
+- pie: Pie chart for part-to-whole relationships
+- doughnut: Doughnut chart (same as pie with center hole)
+- scatter: Scatter plot for correlation analysis
+- kpi: Single key metric with prefix/suffix
+- metric: Advanced metric card with trend indication
+- progress: Progress bar for completion rates
+- table: Detailed tabular data
+- gauge: Progress/capacity metrics with dial visualization
 
 WIDGET CONFIG STRUCTURE:
 {
@@ -421,7 +419,7 @@ WIDGET CONFIG STRUCTURE:
   "type": "bar|line|area|pie|doughnut|scatter|kpi|metric|progress|table|gauge",
   "position": { "x": 0, "y": 0, "w": 6, "h": 4 },
   "dataConfig": {
-    "table": "table_name",
+    "table": "TABLE_NAME",
     "xField": "column_name",
     "yField": "column_name", 
     "aggregation": "sum|avg|count|min|max",
@@ -434,92 +432,43 @@ WIDGET CONFIG STRUCTURE:
     "colors": ["#3b82f6", "#8b5cf6"],
     "showLegend": true,
     "showGrid": true,
-    "showLabels": true,
     "prefix": "฿",
     "suffix": " units"
-  },
-  "tooltipConfig": {
-    "enabled": true,
-    "format": "{fieldName}: {value}"
   },
   "visible": true
 }
 
-WIDGET TYPES (All 11 supported):
-- bar: Bar chart for comparing categories
-- line: Line chart for trends over time
-- area: Area chart for trend visualization with fill
-- pie: Pie chart for part-to-whole relationships (limit 5-8 slices)
-- doughnut: Doughnut chart (same as pie with center hole)
-- scatter: Scatter plot for correlation analysis (needs both xField and yField)
-- kpi: Single key metric with prefix/suffix
-- metric: Advanced metric card with trend indication
-- progress: Progress bar for completion rates
-- table: Detailed tabular data
-- gauge: Progress/capacity metrics with dial visualization
-
 CRITICAL RULES:
-1. Support ALL 11 widget types: bar, line, area, pie, doughnut, scatter, kpi, metric, progress, table, gauge
-2. orderBy MUST be array format: [{ "field": "column", "direction": "ASC|DESC" }]
-3. ALWAYS include "groupBy" when using aggregation with xField
-4. For KPI widgets, use "yField" for the value field (not "valueField")
-5. Include tooltipConfig for better user experience
-6. For scatter plots, REQUIRE both xField and yField
-
-SMART POSITIONING:
-- When adding widgets to existing config, calculate positions to avoid overlap
-- Use available space efficiently
-- Keep existing widget positions unless user asks to reorganize
-
-AGGREGATION + GROUP BY:
-- ALWAYS use "aggregation" when using "groupBy"
-- Example: {"yField": "totalSales", "aggregation": "sum", "groupBy": ["productName"]}
-
-CONVERSATIONAL EXAMPLES:
-User: "สร้าง dashboard ให้หน่อย"
-AI: "ผมขอดูข้อมูลในตารางของคุณก่อนนะครับ ว่ามี column อะไรบ้าง เพื่อจะได้แนะนำ widget ที่เหมาะสมให้คุณครับ"
-
-User (after seeing columns): "มี dataDate, corp, prodName, qtyFromThisDoc อะไรแบบนี้"
-AI: "เยี่ยมเลยครับ! จากข้อมูลที่เห็น แนะนำให้เริ่มด้วย 1) KPI card แสดงยอดรวม qtyFromThisDoc 2) Bar chart เปรียบเทียบ quantity ตาม prodName 3) Line chart แสดงแนวโน้ม quantity ตาม dataDate เป็นอย่างไรครับ?"
+1. orderBy MUST be array format: [{ "field": "column", "direction": "ASC|DESC" }]
+2. ALWAYS include "groupBy" when using aggregation with xField
+3. For KPI/metric widgets, use "field" (not yField) for the value
+4. Generate unique widget IDs like "widget_1", "widget_2", etc.
 
 ${
   tableSchema
     ? `\nAVAILABLE DATABASE SCHEMA:\n${JSON.stringify(tableSchema, null, 2)}`
-    : ""
+    : `\nNO TABLE SCHEMA PROVIDED - Use placeholder field names like "field1", "field2" or ask user for column names`
 }
 
-${
-  sampleData &&
-  sampleData.success &&
-  sampleData.data &&
-  sampleData.data.length > 0
-    ? `\nSAMPLE DATA FROM TABLE "${selectedTable}" (${
-        sampleData.data.length
-      } records):\n${JSON.stringify(
-        sampleData.data,
-        null,
-        2
-      )}\n\nUse this sample data to understand the actual data structure and suggest appropriate visualizations.`
-    : ""
-}
+${selectedTable ? `\nSELECTED TABLE: ${selectedTable}` : ""}
 
 ${
   currentConfig
-    ? `\nCURRENT DASHBOARD CONFIG (analyze this):\n${JSON.stringify(
+    ? `\nCURRENT DASHBOARD CONFIG (MODIFY THIS):\n${JSON.stringify(
         currentConfig,
         null,
         2
       )}\n\nCurrent widgets count: ${
         currentConfig.widgets?.length || 0
-      }\nYour job: Work with this existing config incrementally.`
-    : "\nNo existing config - generate fresh dashboard."
+      }\nYour job: Modify this config based on user request and return the COMPLETE updated config.`
+    : "\nNo existing config - Create a fresh dashboard config."
 }
 
 ${widgetType ? `\nREQUESTED WIDGET TYPE: ${widgetType}` : ""}
 
 USER REQUEST: ${prompt}
 
-IMPORTANT: Return ONLY a JSON object with "explanation" and "config" fields. No markdown, no extra text.`;
+IMPORTANT: Return ONLY a valid JSON object. No markdown, no extra text.`;
 
       // Call Gemini API with selected model
       const modelInstance = geminiClient.getGenerativeModel({
@@ -643,6 +592,12 @@ IMPORTANT: Return ONLY a JSON object with "explanation" and "config" fields. No 
         );
       }
 
+      console.log(
+        "📤 [generate-config] Sending config with",
+        generatedConfig?.widgets?.length || 0,
+        "widgets"
+      );
+
       res.json({
         success: true,
         config: generatedConfig,
@@ -650,7 +605,6 @@ IMPORTANT: Return ONLY a JSON object with "explanation" and "config" fields. No 
         suggestions,
         prompt,
         model: selectedModel,
-        sampleDataUsed: sampleData?.success || false,
       });
     } catch (error: any) {
       console.error("AI Assistant Error:", error);
@@ -698,109 +652,100 @@ router.post("/tenants/:tenantId/ai-assistant/chat", async (req, res) => {
       context || {};
 
     // Try to get sample data if available
-    let sampleData = null;
-    if (dataSource && selectedTable) {
-      sampleData = await getSampleData(dataSource, selectedTable, 3);
-    }
+    // ⭐ SIMPLIFIED: Don't fetch sample data, work with config directly
+    const systemPrompt = `You are an intelligent dashboard configuration assistant. You help users modify their dashboard configurations.
 
-    const systemPrompt = `You are an intelligent dashboard configuration agent with memory of the current state.
+LANGUAGE: Match the user's language (Thai/English).
 
-LANGUAGE SUPPORT:
-- You can understand and respond in both English and Thai (ภาษาไทย)
-- Match your response language to the user's question language
-- Be natural and conversational in whichever language you use
+🎯 YOUR MAIN GOAL:
+When user asks to modify config, return ONLY the changes in this format:
 
-YOUR CAPABILITIES:
-- Understand the current dashboard configuration
-- Provide advice on modifications (add, remove, change, keep)
-- Explain visualization best practices (in user's language)
-- Help with data configuration
-- Debug issues
-- Suggest improvements
-
-BE AGENT-LIKE:
-- Remember what user has in their dashboard
-- Suggest incremental changes
-- Explain trade-offs
-- Be conversational and helpful
-- Respond in the same language as the user's question
-
-CRITICAL: HOW TO RESPOND WITH CONFIG CHANGES
-========================================
-When user asks to MODIFY/CHANGE an existing widget:
-1. Respond with explanation in plain text
-2. Then add ONLY the modified widget(s) in JSON format
-3. DO NOT send the entire dashboard config - only the widget(s) being changed
-
-CRITICAL CONFIG RULES:
-1. ALWAYS use "pie" instead of "donut" or "doughnut"
-2. orderBy MUST be array format: [{ "field": "column", "direction": "ASC|DESC" }]
-3. ALWAYS include "groupBy" when using aggregation with xField
-4. For KPI widgets, use "yField" for the value field (not "valueField")
-5. Include tooltipConfig for better user experience
-
-CORRECT Example (modifying 1 widget):
-"ได้เลยครับ! ผมจะเปลี่ยนสี widget 'Top 10 Products' เป็นสีน้ำเงินเข้ม #1e3a8a
-
-Here's the updated widget:
-
+---CHANGES---
 {
-  "id": "widget_1",
-  "title": "Top 10 Products by Sales",
-  "type": "bar",
-  "position": { "x": 0, "y": 0, "w": 6, "h": 4 },
-  "dataConfig": { ... },
-  "styleConfig": {
-    "color": "#1e3a8a"
-  }
-}"
-
-WRONG Example (sending entire config - NEVER DO THIS):
-{
-  "layout": "grid",
-  "widgets": [ ... all xx widgets ... ]  ❌ DON'T DO THIS!
+  "action": "update" | "add" | "remove",
+  "targetType": "widget" | "filter" | "globalSettings" | "theme",
+  "targetId": "widget_xxx" (if updating specific widget),
+  "changes": {
+    // Only the fields that changed
+  },
+  "explanation": "Brief explanation of what changed"
 }
+---END---
 
-When to send FULL config vs WIDGET only:
-- User says "เปลี่ยนสี widget X" → Send ONLY that widget
-- User says "แก้ไข 2 widget" → Send ONLY those 2 widgets  
-- User says "เพิ่ม widget ใหม่" → Send ONLY the new widget
-- User says "สร้าง dashboard ใหม่" → Send FULL config
+📋 EXAMPLES:
+
+User: "เปลี่ยนสี widget แรกเป็นสีดำ"
+Response:
+ได้เลยครับ! ผมจะเปลี่ยนสีหลักของ widget แรกเป็นสีดำ
+
+---CHANGES---
+{
+  "action": "update",
+  "targetType": "widget",
+  "targetId": "widget_advanced_bar_001",
+  "changes": {
+    "styleConfig.colors[0]": "#000000"
+  },
+  "explanation": "เปลี่ยนสีหลักของ Bar Chart เป็นสีดำ"
+}
+---END---
+
+User: "เพิ่ม KPI แสดงยอดขายรวม"
+Response:
+ได้เลยครับ! ผมจะเพิ่ม KPI widget ใหม่
+
+---CHANGES---
+{
+  "action": "add",
+  "targetType": "widget",
+  "newWidget": {
+    "id": "widget_kpi_new_001",
+    "title": "ยอดขายรวม",
+    "type": "kpi",
+    "position": { "x": 0, "y": 0, "w": 3, "h": 2 },
+    "dataConfig": {
+      "table": "...",
+      "yField": "totalFromBuyPrice",
+      "aggregation": "sum"
+    }
+  },
+  "explanation": "เพิ่ม KPI แสดงยอดขายรวม"
+}
+---END---
+
+User: "ลบ widget ตัวสุดท้าย"
+Response:
+ได้เลยครับ! ผมจะลบ widget ตัวสุดท้าย
+
+---CHANGES---
+{
+  "action": "remove",
+  "targetType": "widget",
+  "targetId": "widget_multiline_by_branch_001",
+  "explanation": "ลบ Sales Trend by Branch widget"
+}
+---END---
+
+⚠️ IMPORTANT:
+- For simple greetings/questions: Just respond conversationally, NO ---CHANGES--- block
+- For modifications: Always include ---CHANGES--- block with specific changes
+- Never return the entire config, only what changed
+
+WIDGET TYPES: bar, line, area, pie, doughnut, scatter, kpi, metric, progress, table, gauge
 
 ${
   currentConfig
-    ? `\nCURRENT DASHBOARD STATE:\n${JSON.stringify(
+    ? `\nCURRENT DASHBOARD CONFIG:\n${JSON.stringify(
         currentConfig,
         null,
         2
-      )}\n\nYou can see the user currently has ${
-        currentConfig.widgets?.length || 0
-      } widget(s). Reference these when discussing changes.`
-    : "\nNo dashboard created yet. Help user get started."
+      )}\n\nWidgets: ${currentConfig.widgets?.length || 0}`
+    : "\nNo dashboard config yet."
 }
 
-${
-  tableSchema
-    ? `\nAVAILABLE DATABASE SCHEMA:\n${JSON.stringify(tableSchema, null, 2)}`
-    : ""
-}
+${tableSchema ? `\nTABLE SCHEMA:\n${JSON.stringify(tableSchema, null, 2)}` : ""}
 
-${
-  sampleData &&
-  sampleData.success &&
-  sampleData.data &&
-  sampleData.data.length > 0
-    ? `\nSAMPLE DATA FROM TABLE "${selectedTable}" (${
-        sampleData.data.length
-      } records):\n${JSON.stringify(
-        sampleData.data,
-        null,
-        2
-      )}\n\nUse this sample data to provide better suggestions based on actual data.`
-    : ""
-}
-
-Be concise, friendly, and actionable. Provide specific examples when helpful. Always respond in the same language as the user's message.`;
+Be concise and helpful. If user wants to modify config, return the COMPLETE updated config as JSON.`;
 
     // Build chat history for Gemini
     const chatHistory = [
@@ -845,141 +790,268 @@ Be concise, friendly, and actionable. Provide specific examples when helpful. Al
     const response = await result.response;
     const text = response.text();
 
+    // ⭐ Check if message contains modification keywords
+    const modificationKeywords = [
+      "เปลี่ยน",
+      "แก้",
+      "เพิ่ม",
+      "ลบ",
+      "สร้าง",
+      "ปรับ",
+      "อัพเดท",
+      "change",
+      "modify",
+      "add",
+      "remove",
+      "create",
+      "update",
+      "delete",
+    ];
+    const hasModificationIntent = modificationKeywords.some((kw) =>
+      message.toLowerCase().includes(kw.toLowerCase())
+    );
+
     // Try to extract JSON config from the response
+    // ⚠️ Only extract if user has modification intent
     let extractedConfig = null;
+    let configChanges = null; // New: For partial changes
 
-    // Try to match full dashboard config first
-    let jsonMatch = text.match(/\{[\s\S]*?"layout"[\s\S]*?"widgets"[\s\S]*?\}/);
+    if (!hasModificationIntent) {
+      console.log("💬 Simple chat - not extracting config");
+      console.log("📝 User message:", message);
+    } else {
+      console.log("🔧 Modification intent detected, extracting changes...");
+      console.log("📝 AI Response length:", text.length);
 
-    if (jsonMatch) {
-      try {
-        extractedConfig = JSON.parse(jsonMatch[0]);
-        console.log("✅ Extracted FULL dashboard config from AI response");
-      } catch (e) {
-        console.log("⚠️ Found full config pattern but couldn't parse");
-      }
-    }
+      // ⭐ NEW: Try to find ---CHANGES--- block first (partial updates)
+      const changesMatch = text.match(/---CHANGES---\s*([\s\S]*?)\s*---END---/);
 
-    // If no full config, try to extract widgets using proper JSON parsing
-    if (!extractedConfig) {
-      // Find all balanced JSON objects by counting braces
-      const widgets: any[] = [];
-      let depth = 0;
-      let start = -1;
+      if (changesMatch) {
+        try {
+          const changesJson = changesMatch[1].trim();
+          configChanges = JSON.parse(changesJson);
+          console.log("✅ Extracted PARTIAL changes from AI response");
+          console.log("📋 Change action:", configChanges.action);
+          console.log(
+            "🎯 Target:",
+            configChanges.targetType,
+            configChanges.targetId || ""
+          );
 
-      for (let i = 0; i < text.length; i++) {
-        if (text[i] === "{") {
-          if (depth === 0) start = i;
-          depth++;
-        } else if (text[i] === "}") {
-          depth--;
-          if (depth === 0 && start !== -1) {
-            // Found a complete JSON object
-            const jsonStr = text.substring(start, i + 1);
-            try {
-              const parsed = JSON.parse(jsonStr);
-              // Check if this looks like a widget
-              if (
-                parsed.id &&
-                parsed.type &&
-                typeof parsed.id === "string" &&
-                parsed.id.startsWith("widget_")
-              ) {
-                widgets.push(parsed);
-                console.log(
-                  `✅ Found widget: ${parsed.id} (${
-                    parsed.title || "untitled"
-                  })`
-                );
-              }
-            } catch (e) {
-              // Not valid JSON, skip
+          // Apply changes to current config
+          if (currentConfig && configChanges) {
+            const updatedConfig = applyConfigChanges(
+              currentConfig,
+              configChanges
+            );
+            if (updatedConfig) {
+              extractedConfig = updatedConfig;
+              console.log("✅ Applied changes to config");
             }
-            start = -1;
+          }
+        } catch (e) {
+          console.log("⚠️ Found ---CHANGES--- block but couldn't parse");
+          console.log("❌ Parse error:", e instanceof Error ? e.message : e);
+        }
+      }
+
+      // Fallback: Try to find full config (legacy format)
+      if (!extractedConfig && !configChanges) {
+        // Try to find JSON code block first (```json ... ```)
+        const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+        let jsonText = codeBlockMatch ? codeBlockMatch[1].trim() : text;
+
+        // Try to match full dashboard config
+        const jsonMatch = jsonText.match(
+          /\{[\s\S]*?"layout"[\s\S]*?"widgets"[\s\S]*\}/
+        );
+
+        if (jsonMatch) {
+          try {
+            // Clean up any trailing content after the last }
+            let jsonStr = jsonMatch[0];
+            // Find the balanced closing brace
+            let depth = 0;
+            let endIndex = 0;
+            for (let i = 0; i < jsonStr.length; i++) {
+              if (jsonStr[i] === "{") depth++;
+              else if (jsonStr[i] === "}") {
+                depth--;
+                if (depth === 0) {
+                  endIndex = i + 1;
+                  break;
+                }
+              }
+            }
+            if (endIndex > 0) {
+              jsonStr = jsonStr.substring(0, endIndex);
+            }
+
+            extractedConfig = JSON.parse(jsonStr);
+            console.log(
+              "✅ Extracted FULL dashboard config from AI response (fallback)"
+            );
+          } catch (e) {
+            console.log("⚠️ Found full config pattern but couldn't parse");
+            console.log("❌ Parse error:", e instanceof Error ? e.message : e);
           }
         }
       }
 
-      if (widgets.length > 0) {
-        // Apply same fixes as in generate-config endpoint
-        const fixedWidgets = widgets.map((widget: any) => {
-          // Fix widget type issues
-          if (widget.type === "donut" || widget.type === "doughnut") {
-            widget.type = "pie";
-          }
+      // If no full config, try to extract widgets using proper JSON parsing
+      if (!extractedConfig) {
+        // Find all balanced JSON objects by counting braces
+        const widgets: any[] = [];
+        let depth = 0;
+        let start = -1;
 
-          // Fix dataConfig issues
-          if (widget.dataConfig) {
-            // Fix orderBy format
-            if (
-              widget.dataConfig.orderBy &&
-              typeof widget.dataConfig.orderBy === "string"
-            ) {
-              const direction = widget.dataConfig.orderDirection || "DESC";
-              widget.dataConfig.orderBy = [
-                {
-                  field: widget.dataConfig.orderBy,
-                  direction: direction.toUpperCase(),
-                },
-              ];
-              delete widget.dataConfig.orderDirection;
-            }
-
-            // Fix KPI valueField -> yField
-            if (
-              widget.type === "kpi" &&
-              widget.dataConfig.valueField &&
-              !widget.dataConfig.yField
-            ) {
-              widget.dataConfig.yField = widget.dataConfig.valueField;
-              delete widget.dataConfig.valueField;
-            }
-
-            // Ensure groupBy for aggregated fields
-            if (
-              widget.dataConfig.aggregation &&
-              widget.dataConfig.xField &&
-              !widget.dataConfig.groupBy
-            ) {
-              widget.dataConfig.groupBy = [widget.dataConfig.xField];
-            }
-
-            // Add tooltipConfig if missing
-            if (!widget.tooltipConfig) {
-              const fields = [];
-              if (widget.dataConfig.xField)
-                fields.push(widget.dataConfig.xField);
-              if (widget.dataConfig.yField)
-                fields.push(widget.dataConfig.yField);
-              widget.tooltipConfig = { fields };
+        for (let i = 0; i < text.length; i++) {
+          if (text[i] === "{") {
+            if (depth === 0) start = i;
+            depth++;
+          } else if (text[i] === "}") {
+            depth--;
+            if (depth === 0 && start !== -1) {
+              // Found a complete JSON object
+              const jsonStr = text.substring(start, i + 1);
+              try {
+                const parsed = JSON.parse(jsonStr);
+                // Check if this looks like a widget
+                if (
+                  parsed.id &&
+                  parsed.type &&
+                  typeof parsed.id === "string" &&
+                  parsed.id.startsWith("widget_")
+                ) {
+                  widgets.push(parsed);
+                  console.log(
+                    `✅ Found widget: ${parsed.id} (${
+                      parsed.title || "untitled"
+                    })`
+                  );
+                }
+              } catch (e) {
+                // Not valid JSON, skip
+              }
+              start = -1;
             }
           }
+        }
 
-          return widget;
-        });
+        if (widgets.length > 0) {
+          // Apply same fixes as in generate-config endpoint
+          const fixedWidgets = widgets.map((widget: any) => {
+            // Fix widget type issues
+            if (widget.type === "donut" || widget.type === "doughnut") {
+              widget.type = "pie";
+            }
 
-        extractedConfig = {
-          widgets: fixedWidgets,
+            // Fix dataConfig issues
+            if (widget.dataConfig) {
+              // Fix orderBy format
+              if (
+                widget.dataConfig.orderBy &&
+                typeof widget.dataConfig.orderBy === "string"
+              ) {
+                const direction = widget.dataConfig.orderDirection || "DESC";
+                widget.dataConfig.orderBy = [
+                  {
+                    field: widget.dataConfig.orderBy,
+                    direction: direction.toUpperCase(),
+                  },
+                ];
+                delete widget.dataConfig.orderDirection;
+              }
+
+              // Fix KPI valueField -> yField
+              if (
+                widget.type === "kpi" &&
+                widget.dataConfig.valueField &&
+                !widget.dataConfig.yField
+              ) {
+                widget.dataConfig.yField = widget.dataConfig.valueField;
+                delete widget.dataConfig.valueField;
+              }
+
+              // Ensure groupBy for aggregated fields
+              if (
+                widget.dataConfig.aggregation &&
+                widget.dataConfig.xField &&
+                !widget.dataConfig.groupBy
+              ) {
+                widget.dataConfig.groupBy = [widget.dataConfig.xField];
+              }
+
+              // Add tooltipConfig if missing
+              if (!widget.tooltipConfig) {
+                const fields = [];
+                if (widget.dataConfig.xField)
+                  fields.push(widget.dataConfig.xField);
+                if (widget.dataConfig.yField)
+                  fields.push(widget.dataConfig.yField);
+                widget.tooltipConfig = { fields };
+              }
+            }
+
+            return widget;
+          });
+
+          extractedConfig = {
+            widgets: fixedWidgets,
+          };
+          console.log(
+            `✅ Extracted ${widgets.length} widget(s) from AI response`
+          );
+        }
+      }
+    } // ⭐ End of hasModificationIntent else block
+
+    // ⭐ ENHANCED: If we extracted widgets, merge with currentConfig to create complete config
+    let finalConfig = null;
+
+    if (extractedConfig) {
+      if (extractedConfig.layout && extractedConfig.widgets) {
+        // It's already a complete config
+        finalConfig = extractedConfig;
+        console.log("✅ Using complete config from AI");
+      } else if (extractedConfig.widgets && currentConfig) {
+        // We have widgets, merge with existing config
+        finalConfig = {
+          ...currentConfig,
+          widgets: extractedConfig.widgets,
         };
-        console.log(
-          `✅ Extracted ${widgets.length} widget(s) from AI response`
-        );
+        console.log("✅ Merged widgets with current config");
+      } else if (extractedConfig.widgets) {
+        // No current config, create new one
+        finalConfig = {
+          layout: "grid",
+          theme: "light",
+          gridCols: 12,
+          gridRowHeight: 100,
+          widgets: extractedConfig.widgets,
+        };
+        console.log("✅ Created new config from widgets");
       }
     }
 
     // Generate suggestions based on response
-    const suggestions = generateSuggestions(
-      extractedConfig || currentConfig,
-      text
-    );
+    const suggestions = generateSuggestions(finalConfig || currentConfig, text);
+
+    console.log("📤 Sending response with config:", finalConfig ? "YES" : "NO");
+    if (finalConfig) {
+      console.log("📊 Config widgets count:", finalConfig.widgets?.length || 0);
+    }
+    if (configChanges) {
+      console.log("📝 Config changes:", JSON.stringify(configChanges, null, 2));
+    }
 
     res.json({
       success: true,
       response: text,
-      config: extractedConfig, // Include config if found
+      config: finalConfig, // Include complete config if found
+      configChanges, // ⭐ NEW: Include partial changes for frontend to display
       suggestions,
       model: selectedModel,
-      sampleDataUsed: sampleData?.success || false,
     });
   } catch (error: any) {
     console.error("Chat Error:", error);

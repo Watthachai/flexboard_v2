@@ -2,6 +2,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { db } from "../index.js";
+import { executeQuery } from "../utils/database-connectors.js";
 
 export const onpremRouter = Router();
 
@@ -378,9 +379,6 @@ onpremRouter.post(
         dsData.connection
       );
       console.log(`📝 [OnPrem] Query received:`, query);
-
-      // Import database connector
-      const { executeQuery } = await import("../utils/database-connectors");
 
       // Execute query with timeout (use 'connection' not 'config')
       console.log(`⏳ [OnPrem] Executing query...`);

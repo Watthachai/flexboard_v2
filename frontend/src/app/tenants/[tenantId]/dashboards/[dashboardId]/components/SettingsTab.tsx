@@ -31,6 +31,8 @@ interface DataSource {
   name: string;
   type: string;
   status: string;
+  mockMode?: boolean;
+  mockDataId?: string;
   connection: {
     host?: string;
     port?: number;
@@ -240,42 +242,87 @@ export function SettingsTab({
                   );
                 })()}
 
-                {/* Show selected table info if exists */}
-                {dashboard.dataSourceId && dashboard.selectedTable && (
-                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-2">
-                    <h4 className="font-medium text-blue-900 flex items-center gap-2">
-                      <Table className="h-4 w-4" />
-                      Selected Table
-                    </h4>
-                    <div className="text-sm">
-                      <span className="text-blue-700">Table Name:</span>{" "}
-                      <span className="font-mono font-semibold text-blue-900">
-                        {dashboard.selectedTable}
-                      </span>
-                    </div>
-                    <p className="text-xs text-blue-700">
-                      💡 To change the table, click &quot;Edit&quot; to open the
-                      Data Source dialog and select a different table.
-                    </p>
-                  </div>
-                )}
+                {/* Show selected table/mock data info if exists */}
+                {dashboard.dataSourceId &&
+                  (() => {
+                    const ds = dataSources.find(
+                      (d) => d.id === selectedDataSourceId
+                    );
 
-                {/* Show warning if no table selected */}
-                {dashboard.dataSourceId && !dashboard.selectedTable && (
-                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
-                    <h4 className="font-medium text-amber-900 flex items-center gap-2">
-                      <Table className="h-4 w-4" />
-                      No Table Selected
-                    </h4>
-                    <p className="text-sm text-amber-700">
-                      You need to select a table to design your dashboard.
-                    </p>
-                    <p className="text-xs text-amber-600">
-                      💡 Click &quot;Edit&quot; button above to select a table
-                      from your data source.
-                    </p>
-                  </div>
-                )}
+                    // Debug: Log datasource details
+                    console.log("SettingsTab - Datasource Details:", {
+                      id: ds?.id,
+                      name: ds?.name,
+                      mockMode: ds?.mockMode,
+                      mockDataId: ds?.mockDataId,
+                      selectedTable: dashboard.selectedTable,
+                    });
+
+                    // Mock Data Mode
+                    if (ds?.mockMode && ds?.mockDataId) {
+                      return (
+                        <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg space-y-2">
+                          <h4 className="font-medium text-purple-900 flex items-center gap-2">
+                            <Database className="h-4 w-4" />
+                            Mock Data Source
+                          </h4>
+                          <div className="text-sm">
+                            <span className="text-purple-700">
+                              Mock Dataset ID:
+                            </span>{" "}
+                            <span className="font-mono font-semibold text-purple-900">
+                              {ds.mockDataId}
+                            </span>
+                          </div>
+                          <p className="text-xs text-purple-700">
+                            💡 Using mock data instead of live database
+                            connection. Click &quot;Edit&quot; to change or
+                            upload different mock data.
+                          </p>
+                        </div>
+                      );
+                    }
+
+                    // Live Database with Table Selected
+                    if (dashboard.selectedTable) {
+                      return (
+                        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-2">
+                          <h4 className="font-medium text-blue-900 flex items-center gap-2">
+                            <Table className="h-4 w-4" />
+                            Selected Table
+                          </h4>
+                          <div className="text-sm">
+                            <span className="text-blue-700">Table Name:</span>{" "}
+                            <span className="font-mono font-semibold text-blue-900">
+                              {dashboard.selectedTable}
+                            </span>
+                          </div>
+                          <p className="text-xs text-blue-700">
+                            💡 To change the table, click &quot;Edit&quot; to
+                            open the Data Source dialog and select a different
+                            table.
+                          </p>
+                        </div>
+                      );
+                    }
+
+                    // Live Database but No Table Selected
+                    return (
+                      <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
+                        <h4 className="font-medium text-amber-900 flex items-center gap-2">
+                          <Table className="h-4 w-4" />
+                          No Table Selected
+                        </h4>
+                        <p className="text-sm text-amber-700">
+                          You need to select a table to design your dashboard.
+                        </p>
+                        <p className="text-xs text-amber-600">
+                          💡 Click &quot;Edit&quot; button above to select a
+                          table from your data source.
+                        </p>
+                      </div>
+                    );
+                  })()}
               </>
             )}
 

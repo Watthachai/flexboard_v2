@@ -91,6 +91,7 @@ interface DesignTabProps {
     currentVersion: string;
     isViewingCurrent: boolean;
   }) => void;
+  onSwitchToSettings?: () => void;
 }
 
 interface TableColumn {
@@ -109,6 +110,7 @@ export function DesignTab({
   dashboardId,
   onUpdate,
   onVersionChange,
+  onSwitchToSettings,
 }: DesignTabProps) {
   const { user } = useAuth();
   const [configText, setConfigText] = useState<string>("");
@@ -116,6 +118,10 @@ export function DesignTab({
   const [loadingColumns, setLoadingColumns] = useState(false);
   const [isValid, setIsValid] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+
+  // DataSource states
+  const [dataSource, setDataSource] = useState<any>(null);
+  const [loadingDataSource, setLoadingDataSource] = useState(false);
 
   // Version management states
   const [versions, setVersions] = useState<DashboardVersion[]>([]);
@@ -217,12 +223,35 @@ export function DesignTab({
   }, [dashboard.config, dashboard.selectedTable]);
 
   useEffect(() => {
-    if (dashboard?.selectedTable && dashboard?.dataSourceId) {
+    if (dashboard?.dataSourceId) {
+      loadDataSource();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dashboard?.dataSourceId]);
+
+  useEffect(() => {
+    if (dataSource) {
       loadTableColumns();
       // Don't auto-load preview - load on tab click instead
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dashboard?.selectedTable, dashboard?.dataSourceId]);
+  }, [dataSource]);
+
+  const loadDataSource = async () => {
+    if (!dashboard.dataSourceId) return;
+
+    try {
+      setLoadingDataSource(true);
+      const { getDataSourceById } = await import("@/lib/api");
+      const ds = await getDataSourceById(tenantId, dashboard.dataSourceId);
+      setDataSource(ds);
+    } catch (error: any) {
+      console.error("Error loading datasource:", error);
+      toast.error("Failed to load data source details");
+    } finally {
+      setLoadingDataSource(false);
+    }
+  };
 
   // Load all versions
   const loadVersions = async () => {
@@ -245,23 +274,41 @@ export function DesignTab({
   };
 
   const loadTableColumns = async () => {
-    if (!dashboard.dataSourceId || !dashboard.selectedTable) return;
+    if (!dashboard.dataSourceId || !dataSource) return;
 
     try {
       setLoadingColumns(true);
-      //console.log("Loading columns for:", {
-      //tenantId,
-      //dataSourceId: dashboard.dataSourceId,
-      //table: dashboard.selectedTable,
-      //});
+
+      // If mock mode, get columns from mock data
+      if (dataSource.mockMode && dataSource.mockDataId) {
+        const { getMockDataById } = await import("@/lib/api");
+        const mockData = await getMockDataById(tenantId, dataSource.mockDataId);
+
+        if (mockData.columns && Array.isArray(mockData.columns)) {
+          // Convert string columns to TableColumn format
+          const cols = mockData.columns.map((col: string) => ({
+            name: col,
+            type: "string", // Mock data doesn't have type info
+          }));
+          setColumns(cols);
+        } else {
+          setColumns([]);
+        }
+        return;
+      }
+
+      // For live database, need selectedTable
+      if (!dashboard.selectedTable) {
+        console.log("No table selected for live database");
+        setColumns([]);
+        return;
+      }
 
       const data = await getDataSourceColumns(
         tenantId,
         dashboard.dataSourceId,
         dashboard.selectedTable
       );
-
-      //console.log("Columns data received:", data);
 
       if (data.columns && Array.isArray(data.columns)) {
         setColumns(data.columns);
@@ -271,7 +318,7 @@ export function DesignTab({
       }
     } catch (err: any) {
       console.error("Error loading columns:", err);
-      toast.error(err.message || "Failed to load table columns");
+      toast.error(err.message || "Failed to load columns");
       setColumns([]);
     } finally {
       setLoadingColumns(false);
@@ -279,10 +326,33 @@ export function DesignTab({
   };
 
   const loadTablePreview = async () => {
-    if (!dashboard.dataSourceId || !dashboard.selectedTable) return;
+    if (!dashboard.dataSourceId || !dataSource) return;
 
     try {
       setLoadingPreview(true);
+
+      // If mock mode, get preview from mock data
+      if (dataSource.mockMode && dataSource.mockDataId) {
+        const { previewMockData } = await import("@/lib/api");
+        const result = await previewMockData(
+          tenantId,
+          dataSource.mockDataId,
+          25
+        );
+
+        setPreviewData({
+          columns: result.columns || [],
+          rows: result.rows || [],
+        });
+        return;
+      }
+
+      // For live database, need selectedTable
+      if (!dashboard.selectedTable) {
+        console.log("No table selected for live database");
+        setPreviewData(null);
+        return;
+      }
 
       // Get auth token
       if (!user) {
@@ -316,9 +386,9 @@ export function DesignTab({
         columns: result.columns || [],
         rows: result.data || [],
       });
-    } catch {
-      console.error("Error loading preview");
-      toast.error("Failed to load table preview");
+    } catch (error) {
+      console.error("Error loading preview:", error);
+      toast.error("Failed to load preview");
       setPreviewData(null);
     } finally {
       setLoadingPreview(false);
@@ -885,13 +955,17 @@ export function DesignTab({
   };
 
   // Check if we have required data to show config editor
-  if (!dashboard?.selectedTable || !dashboard?.dataSourceId) {
+  // For mock data: just need dataSourceId (no table required)
+  // For live data: need both dataSourceId and selectedTable
+  if (!dashboard?.dataSourceId) {
     return (
       <Card>
         <CardContent className="py-20">
           <div className="text-center text-gray-500">
             <Database className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-            <h3 className="text-xl font-semibold mb-2">No Table Selected</h3>
+            <h3 className="text-xl font-semibold mb-2">
+              No Data Source Selected
+            </h3>
             <p className="text-sm mb-6 max-w-md mx-auto">
               Before you can design your dashboard, you need to:
             </p>
@@ -911,11 +985,20 @@ export function DesignTab({
               <div className="flex items-start gap-2">
                 <span className="text-blue-500 font-bold">3.</span>
                 <p className="text-sm">
-                  Test the connection and choose a <strong>Table</strong>
+                  Test the connection and choose a <strong>Table</strong> (for
+                  live database) or <strong>Mock Dataset</strong>
                 </p>
               </div>
             </div>
-            <Button className="mt-4">
+            <Button
+              className="mt-4"
+              onClick={() => {
+                // Switch to settings tab using callback
+                if (onSwitchToSettings) {
+                  onSwitchToSettings();
+                }
+              }}
+            >
               <Sparkles className="mr-2 h-4 w-4" />
               Go to Settings
             </Button>
@@ -933,7 +1016,9 @@ export function DesignTab({
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="flex items-center gap-1">
               <Database className="h-3 w-3" />
-              Table: {dashboard.selectedTable}
+              {dataSource?.mockMode
+                ? `Mock Data: ${dataSource.mockDataId || "N/A"}`
+                : `Table: ${dashboard.selectedTable || "N/A"}`}
             </Badge>
             <Badge variant={isValid ? "default" : "destructive"}>
               {isValid ? "Valid JSON" : "Invalid JSON"}

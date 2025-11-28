@@ -32,14 +32,13 @@ console.log(
   `🤖 Gemini API Key: ${process.env.GEMINI_API_KEY ? "✅ Set" : "❌ Not Set"}`
 );
 
-// Store service account for Firestore with custom database
-let serviceAccountCredentials: Record<string, unknown> | null = null;
+// Parse service account for reuse
+let serviceAccount: any = null;
 
 // Initialize Firebase Admin
 if (process.env[serviceAccountEnvKey]) {
   // Use environment-specific service account
-  const serviceAccount = JSON.parse(process.env[serviceAccountEnvKey]);
-  serviceAccountCredentials = serviceAccount;
+  serviceAccount = JSON.parse(process.env[serviceAccountEnvKey]);
 
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
@@ -86,15 +85,21 @@ const databaseId = process.env.FIRESTORE_DATABASE_ID;
 export const getFirestore = (): Firestore => {
   if (databaseId && databaseId !== "(default)") {
     console.log(`📊 Using Firestore database: ${databaseId}`);
-    // Create Firestore instance with specific database and credentials
-    return new Firestore({
-      projectId: admin.app().options.projectId,
-      databaseId: databaseId,
-      credentials: serviceAccountCredentials as {
-        client_email?: string;
-        private_key?: string;
-      },
-    });
+    // Create Firestore instance with specific database
+    if (serviceAccount) {
+      // Use the service account credentials
+      return new Firestore({
+        projectId: admin.app().options.projectId,
+        databaseId: databaseId,
+        credentials: serviceAccount,
+      });
+    } else {
+      // Fallback to using projectId only (will use application default credentials)
+      return new Firestore({
+        projectId: admin.app().options.projectId,
+        databaseId: databaseId,
+      });
+    }
   }
   return admin.firestore();
 };
@@ -119,6 +124,7 @@ import { onpremRouter } from "./routes/onprem.js"; // OnPrem API routes
 import { apiKeysRouter } from "./routes/apiKeys.js"; // API Keys management
 import aiAssistantRouter from "./routes/ai-assistant.js"; // AI Assistant routes
 import chatHistoryRouter from "./routes/chat-history.js"; // Chat History routes
+import { mockDataRouter } from "./routes/mockdata.js"; // Mock Data routes
 
 // ===== Express App =====
 const app = express();
@@ -147,20 +153,24 @@ app.use(
     origin: [
       "http://localhost:9002",
       "http://localhost:3000",
+      "http://localhost:5001",
 
       // FlexBoard Production
       "https://admin.fittflexb.com",
       "https://app.fittflexb.com",
+      "https://api.fittflexb.com",
 
       // FlexBoard Staging
       "https://admin-staging.fittflexb.com",
       "https://app-staging.fittflexb.com",
+      "https://api-staging.fittflexb.com",
 
       // Cloud Run default URLs (for testing)
-      /flexboard-admin-(staging|prod)-.*\.run\.app$/,
-      /flexboard-onprem-(staging|prod)-.*\.run\.app$/,
+      /^https:\/\/flexboard-.*\.run\.app$/,
     ],
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-API-Key"],
   })
 );
 app.use(express.json());
@@ -195,6 +205,7 @@ app.use("/api/tenants/:tenantId/api-keys", apiKeysRouter); // API Keys managemen
 app.use("/api", aiAssistantRouter); // AI Assistant routes
 app.use("/api", chatHistoryRouter); // Chat History routes
 app.use("/api", columnsRouter); // Columns routes
+app.use("/api/tenants", mockDataRouter); // Mock data import and query routes
 
 // Invite Codes Route
 app.use("/api/invite-codes", inviteCodesRouter);
