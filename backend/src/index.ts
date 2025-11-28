@@ -48,6 +48,7 @@ if (process.env[serviceAccountEnvKey]) {
 } else if (process.env.FIREBASE_SERVICE_ACCOUNT) {
   // Fallback to legacy FIREBASE_SERVICE_ACCOUNT
   const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+  serviceAccountCredentials = serviceAccount;
 
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
@@ -60,6 +61,7 @@ if (process.env[serviceAccountEnvKey]) {
       __dirname,
       "../flexboard-v2-firebase-adminsdk-fbsvc-fca7f36834.json"
     ));
+    serviceAccountCredentials = serviceAccount;
 
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
