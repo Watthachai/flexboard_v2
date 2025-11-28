@@ -203,6 +203,51 @@ function AgentStepsDisplay({ steps }: { steps: AgentStep[] }) {
   );
 }
 
+// ⭐ Helper: Parse ---CHANGES--- block from AI response
+function parseChangesFromResponse(response: string): {
+  cleanResponse: string;
+  parsedChanges: ConfigChanges | null;
+} {
+  // More flexible regex - handle various formatting from AI
+  const changesMatch = response.match(
+    /---CHANGES---\s*(\{[\s\S]*?\})\s*---END---/
+  );
+
+  if (changesMatch) {
+    try {
+      const changesJson = changesMatch[1].trim();
+      const parsedChanges = JSON.parse(changesJson) as ConfigChanges;
+      // Remove the ---CHANGES--- block from the response
+      const cleanResponse = response
+        .replace(/---CHANGES---[\s\S]*?---END---/g, "")
+        .trim();
+      return { cleanResponse, parsedChanges };
+    } catch {
+      // Still try to clean the response even if parse fails
+      const cleanResponse = response
+        .replace(/---CHANGES---[\s\S]*?---END---/g, "")
+        .trim();
+      return { cleanResponse, parsedChanges: null };
+    }
+  }
+
+  // Try alternative format without markers (just find JSON object with action/targetType)
+  const jsonMatch = response.match(
+    /\{\s*"action"\s*:\s*"(update|add|remove)"[\s\S]*?"targetType"[\s\S]*?\}/
+  );
+  if (jsonMatch) {
+    try {
+      const parsedChanges = JSON.parse(jsonMatch[0]) as ConfigChanges;
+      const cleanResponse = response.replace(jsonMatch[0], "").trim();
+      return { cleanResponse, parsedChanges };
+    } catch {
+      // Ignore parse errors
+    }
+  }
+
+  return { cleanResponse: response, parsedChanges: null };
+}
+
 // ⭐ NEW: Component สำหรับแสดง Config Changes แบบสวยๆ
 function ConfigChangesDisplay({ changes }: { changes: ConfigChanges }) {
   const getActionIcon = () => {
@@ -301,6 +346,14 @@ function ConfigChangesDisplay({ changes }: { changes: ConfigChanges }) {
           </div>
         </div>
       )}
+
+      {/* ⭐ Action footer */}
+      <div className="mt-3 pt-2 border-t border-blue-100 flex items-center gap-2">
+        <Sparkles className="h-3.5 w-3.5 text-blue-500" />
+        <span className="text-xs text-blue-700">
+          ดู Diff view เพื่อยืนยันการเปลี่ยนแปลง →
+        </span>
+      </div>
     </div>
   );
 }
@@ -397,6 +450,7 @@ ${
   );
   const [deleteSessionId, setDeleteSessionId] = useState<string | null>(null);
   const [isLoadingSession, setIsLoadingSession] = useState(true); // ⭐ NEW: Loading state
+  const [sessionInitialized, setSessionInitialized] = useState(false); // ⭐ Flag to prevent re-loading
 
   const chatHistory = useChatHistory({
     userId: user?.uid || "anonymous",
@@ -451,24 +505,6 @@ ${
 
                   // Schedule diff view update for next tick to avoid setState during render
                   if (updatedMsg.config && onShowDiff) {
-                    console.log("🔄 Scheduling onShowDiff with:", {
-                      currentConfig: currentConfig || {
-                        layout: "grid",
-                        theme: "light",
-                        gridCols: 12,
-                        gridRowHeight: 100,
-                        widgets: [],
-                      },
-                      newConfig: updatedMsg.config,
-                      currentConfigType: typeof currentConfig,
-                      newConfigType: typeof updatedMsg.config,
-                      hasLayout: !!updatedMsg.config.layout,
-                      hasTheme: !!updatedMsg.config.theme,
-                      hasWidgets: !!updatedMsg.config.widgets,
-                      widgetCount: updatedMsg.config.widgets?.length || 0,
-                      explanation: updatedMsg.content.slice(0, 100) + "...",
-                    });
-
                     // Use setTimeout to defer the state update
                     // ใช้ default empty config ถ้าไม่มี currentConfig
                     const baseConfig = currentConfig || {
@@ -580,6 +616,11 @@ ${
       setTypingMessageIndex(0);
     }
 
+    // ⭐ Skip if session already initialized
+    if (sessionInitialized) {
+      return;
+    }
+
     // Auto-load last session (ไม่สร้างใหม่จนกว่า user จะส่งข้อความ)
     const initSession = async () => {
       // ถ้ายังไม่มี user ให้ข้าม
@@ -596,8 +637,8 @@ ${
 
       // ถ้ามี lock อยู่และยังไม่หมดอายุ (5 วินาที) ให้ข้าม
       if (lockTime && now - parseInt(lockTime) < 5000) {
-        console.log("🔒 Session initialization locked, skipping...");
         setIsLoadingSession(false);
+        setSessionInitialized(true);
         return;
       }
 
@@ -607,7 +648,6 @@ ${
       try {
         // รอให้ sessions โหลดเสร็จก่อน
         if (chatHistory.loading) {
-          console.log("⏳ Waiting for sessions to load...");
           localStorage.removeItem(lockKey);
           return; // ยังไม่ปิด loading ให้รอต่อ
         }
@@ -622,14 +662,12 @@ ${
             (s) => s.id === lastSessionId
           );
           if (sessionExists) {
-            console.log("📂 Loading last active session:", lastSessionId);
             await handleLoadSession(lastSessionId);
             localStorage.removeItem(lockKey);
-            // ⭐ รอ 0.5 วินาทีก่อนปิด loading เพื่อให้ transition นุ่มนวล
+            setSessionInitialized(true);
             setTimeout(() => setIsLoadingSession(false), 500);
             return;
           } else {
-            console.log("🗑️ Last session not found, removing...");
             localStorage.removeItem(storageKey);
           }
         }
@@ -637,32 +675,37 @@ ${
         // ถ้าไม่มี lastSessionId แต่มี sessions อยู่ ให้ load session ล่าสุด
         if (chatHistory.sessions.length > 0) {
           const latestSession = chatHistory.sessions[0];
-          console.log("📂 Loading latest session:", latestSession.id);
           await handleLoadSession(latestSession.id);
           localStorage.removeItem(lockKey);
-          // ⭐ รอ 0.5 วินาทีก่อนปิด loading เพื่อให้ transition นุ่มนวล
+          setSessionInitialized(true);
           setTimeout(() => setIsLoadingSession(false), 500);
           return;
         }
 
-        // ✅ ไม่สร้าง session ใหม่ - ให้รอจนกว่า user จะส่งข้อความครั้งแรก
-        console.log("💬 No session found - waiting for first message");
+        // ไม่สร้าง session ใหม่ - ให้รอจนกว่า user จะส่งข้อความครั้งแรก
         localStorage.removeItem(lockKey);
-        // ⭐ รอ 0.5 วินาทีก่อนปิด loading เพื่อให้ transition นุ่มนวล
+        setSessionInitialized(true);
         setTimeout(() => setIsLoadingSession(false), 500);
       } catch (error) {
         console.error("Failed to initialize session:", error);
         localStorage.removeItem(lockKey);
+        setSessionInitialized(true);
         setTimeout(() => setIsLoadingSession(false), 500);
       }
     };
 
-    // เรียกใช้งานเมื่อ sessions โหลดเสร็จแล้ว
-    if (!chatHistory.loading && user?.uid) {
+    // เรียกใช้งานเฉพาะครั้งแรกเมื่อ sessions โหลดเสร็จแล้ว
+    // ⭐ ไม่ trigger อีกครั้งหลังจาก session loaded แล้ว
+    if (
+      !chatHistory.loading &&
+      user?.uid &&
+      isLoadingSession &&
+      !sessionInitialized
+    ) {
       initSession();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatHistory.loading, chatHistory.sessions.length, user?.uid]);
+  }, [chatHistory.loading, user?.uid, isLoadingSession, sessionInitialized]);
 
   useEffect(() => {
     // Auto scroll to bottom when new messages arrive (smooth scroll)
@@ -733,28 +776,24 @@ ${
     setInput("");
     setIsLoading(true);
 
-    // ✅ สร้าง session ถ้ายังไม่มี (เมื่อส่งข้อความครั้งแรก)
+    // สร้าง session ถ้ายังไม่มี (เมื่อส่งข้อความครั้งแรก)
     let sessionId = chatHistory.currentSessionId;
-    let isNewSession = false; // ⭐ ติดตามว่าเป็น session ใหม่หรือไม่
+    let isNewSession = false;
 
     if (!sessionId && user?.uid) {
       try {
-        console.log("✨ Creating new session with first message...");
         sessionId = await chatHistory.createNewSession(userMessage.content);
-        isNewSession = true; // ⭐ เป็น session ใหม่
+        isNewSession = true;
 
         // บันทึก session ลง localStorage
         const storageKey = `lastChatSession_${tenantId}_${dashboardId}`;
         localStorage.setItem(storageKey, sessionId);
-
-        console.log("✅ Created session:", sessionId);
       } catch (error) {
         console.error("Failed to create session:", error);
       }
     }
 
     // Auto-save user message (ถ้ามี session แล้ว และไม่ใช่ session ใหม่)
-    // ⭐ ถ้าเป็น session ใหม่ ข้อความแรกถูกเก็บไว้แล้วตอนสร้าง session
     if (sessionId && !isNewSession) {
       try {
         await chatHistory.saveMessage(sessionId, {
@@ -865,19 +904,7 @@ ${
         isPureQuestion ||
         (!hasConfigKeyword && !wantsNewDashboard);
 
-      console.log("🔍 Message analysis:", {
-        hasConfigKeyword,
-        isPureQuestion,
-        isGreeting,
-        hasExistingConfig,
-        wantsNewDashboard,
-        shouldUseChat,
-        shouldGenerate,
-        isSimpleChat,
-        input: input.trim().substring(0, 50),
-      });
-
-      // ⭐ AGENT STEPS - Initialize steps for this operation
+      // AGENT STEPS - Initialize steps for this operation
       const initSteps: AgentStep[] = [];
 
       if (isSimpleChat) {
@@ -964,11 +991,6 @@ ${
         );
         setLoadingStatus("🔍 วิเคราะห์คำขอ...");
 
-        console.log("📤 Using CHAT to modify existing config:", {
-          prompt: input.trim().substring(0, 50),
-          currentWidgetCount: currentConfig?.widgets?.length || 0,
-        });
-
         const history = messages
           .filter((m) => !m.config)
           .slice(-6) // Keep last 6 messages for context
@@ -1001,11 +1023,13 @@ ${
           },
         });
 
-        console.log("📥 Chat Response received:", {
-          hasConfig: !!result.config,
-          widgetCount: result.config?.widgets?.length || 0,
-          response: result.response?.substring(0, 50),
-        });
+        // Parse ---CHANGES--- block from response
+        const { cleanResponse, parsedChanges } = parseChangesFromResponse(
+          result.response
+        );
+
+        // Use parsed changes if available, otherwise use from API
+        const finalConfigChanges = parsedChanges || result.configChanges;
 
         // Step 3: Edit complete, Diff running
         setCurrentAgentSteps((prev) =>
@@ -1014,9 +1038,10 @@ ${
               ? {
                   ...s,
                   status: "complete",
-                  details: result.config
-                    ? `แก้ไขสำเร็จ`
-                    : "ไม่มีการเปลี่ยนแปลง",
+                  details:
+                    result.config || finalConfigChanges
+                      ? `แก้ไขสำเร็จ`
+                      : "ไม่มีการเปลี่ยนแปลง",
                 }
               : s.id === "diff"
               ? { ...s, status: result.config ? "running" : "complete" }
@@ -1027,23 +1052,22 @@ ${
 
         const assistantMessage: Message = {
           role: "assistant",
-          content: result.response,
+          content: cleanResponse,
           config: result.config,
-          configChanges: result.configChanges, // ⭐ NEW: Include partial changes
+          configChanges: finalConfigChanges,
           suggestions: result.suggestions || [],
           timestamp: new Date(),
           isTyping: false,
           agentSteps: initSteps.map((s) => ({
             ...s,
             status: "complete" as const,
-          })), // Save completed steps
+          })),
         };
 
         setMessages((prev) => [...prev, assistantMessage]);
 
         // Trigger diff if config was modified
         if (result.config && onShowDiff) {
-          console.log("🎯 Triggering diff from chat response");
           setCurrentAgentSteps((prev) =>
             prev.map((s) =>
               s.id === "diff" ? { ...s, status: "complete" } : s
@@ -1125,25 +1149,15 @@ ${
         );
         setLoadingStatus("🎨 สร้าง Dashboard ใหม่...");
 
-        console.log("📤 Using GENERATE for new config:", {
-          prompt: input.trim().substring(0, 50),
-          hasTableSchema: !!tableSchema,
-        });
-
         const result = await generateConfigWithAI(tenantId, {
           prompt: input.trim(),
           model: selectedModel,
           context: {
             tableSchema,
-            currentConfig: wantsNewDashboard ? null : currentConfig, // ถ้าสร้างใหม่ไม่ต้องส่ง current
+            currentConfig: wantsNewDashboard ? null : currentConfig,
             dataSource,
             selectedTable,
           },
-        });
-
-        console.log("📥 Generate Response received:", {
-          hasConfig: !!result.config,
-          widgetCount: result.config?.widgets?.length || 0,
         });
 
         setLoadingStatus("✨ เตรียมแสดงผล...");
@@ -1165,12 +1179,12 @@ ${
           config: result.config,
           suggestions: result.suggestions || [],
           timestamp: new Date(),
-          isTyping: false, // ⭐ ไม่ใช้ typing animation เมื่อมี config
+          isTyping: false,
         };
 
         setMessages((prev) => [...prev, assistantMessage]);
 
-        // ⭐ TRIGGER DIFF IMMEDIATELY if we have config
+        // TRIGGER DIFF IMMEDIATELY if we have config
         // Update step: generate complete
         setCurrentAgentSteps((prev) =>
           prev.map((s) =>
@@ -1189,12 +1203,6 @@ ${
         );
 
         if (result.config && onShowDiff) {
-          console.log("🎯 Triggering diff view immediately with config:", {
-            widgetCount: result.config.widgets?.length || 0,
-            hasLayout: !!result.config.layout,
-            hasWidgets: Array.isArray(result.config.widgets),
-          });
-
           const baseConfig = currentConfig || {
             layout: "grid",
             theme: "light",
@@ -1212,7 +1220,6 @@ ${
 
           // Trigger diff immediately
           setTimeout(() => {
-            console.log("⚡ Calling onShowDiff NOW");
             onShowDiff(
               baseConfig,
               result.config,
@@ -1220,12 +1227,6 @@ ${
             );
           }, 100);
         } else {
-          console.log("⚠️ NOT triggering diff:", {
-            hasConfig: !!result.config,
-            hasOnShowDiff: !!onShowDiff,
-            configIsNull: result.config === null,
-            configIsUndefined: result.config === undefined,
-          });
           setCurrentAgentSteps((prev) =>
             prev.map((s) =>
               s.id === "diff"
@@ -1311,9 +1312,6 @@ ${
     try {
       const session = await chatHistory.loadSession(sessionId);
       if (session) {
-        console.log("📂 Loaded session:", session);
-        console.log("📝 Messages in session:", session.messages);
-
         // Convert to Message format
         const loadedMessages: Message[] = session.messages.map((msg: any) => ({
           role: msg.role as "user" | "assistant",
@@ -1326,8 +1324,6 @@ ${
           isTyping: false,
         }));
 
-        console.log("✅ Converted messages:", loadedMessages);
-
         setMessages(loadedMessages);
         setCurrentSessionTitle(session.title);
         setShowHistoryDialog(false);
@@ -1335,9 +1331,6 @@ ${
         // บันทึก session ที่เปิดลง localStorage
         const storageKey = `lastChatSession_${tenantId}_${dashboardId}`;
         localStorage.setItem(storageKey, sessionId);
-
-        // ⭐ ลบ toast ออก - ไม่ต้องแจ้งเตือนทุกครั้งที่ load
-        // toast.success(`โหลด "${session.title}" แล้ว`);
       }
     } catch (error) {
       console.error("Failed to load session:", error);
@@ -1585,155 +1578,158 @@ ${
               </div>
             ) : (
               <div className="space-y-2">
-                {messages.map((message, index) => (
-                  <div
-                    key={index}
-                    className={`flex ${
-                      message.role === "user" ? "justify-end" : "justify-start"
-                    }`}
-                  >
+                {messages.map((message, index) => {
+                  // ⭐ Use stored configChanges directly - don't re-parse
+                  // Only parse if message.configChanges is not available (legacy messages)
+                  let displayContent = message.content;
+                  let displayChanges: ConfigChanges | undefined =
+                    message.configChanges;
+
+                  // Only parse for assistant messages without stored configChanges
+                  if (message.role === "assistant" && !message.configChanges) {
+                    const { cleanResponse, parsedChanges } =
+                      parseChangesFromResponse(message.content);
+                    displayContent = cleanResponse;
+                    displayChanges = parsedChanges || undefined;
+                  }
+
+                  return (
                     <div
-                      className={`max-w-[80%] rounded-lg p-2.5 ${
+                      key={index}
+                      className={`flex ${
                         message.role === "user"
-                          ? "bg-blue-600 text-white text-sm"
-                          : "bg-gray-100 text-gray-900 text-sm"
+                          ? "justify-end"
+                          : "justify-start"
                       }`}
                     >
-                      {/* Message Content with Markdown */}
-                      <div className="text-sm prose prose-sm max-w-none">
-                        {message.isTyping && index === typingMessageIndex ? (
-                          <>
-                            {displayedContent}
-                            <span className="inline-block w-1 h-4 bg-current ml-0.5 animate-pulse" />
-                          </>
-                        ) : (
-                          <ReactMarkdown
-                            components={{
-                              // Inline code (for colors)
-                              code: ({ className, children, ...props }) => {
-                                // Check if this is inline code by looking at className
-                                const isInline =
-                                  !className?.includes("language-");
-                                return isInline ? (
-                                  <code
-                                    className="px-1.5 py-0.5 rounded text-xs font-mono bg-gray-800 text-white"
+                      <div
+                        className={`max-w-[80%] rounded-lg p-2.5 ${
+                          message.role === "user"
+                            ? "bg-blue-600 text-white text-sm"
+                            : "bg-gray-100 text-gray-900 text-sm"
+                        }`}
+                      >
+                        {/* Message Content with Markdown */}
+                        <div className="text-sm prose prose-sm max-w-none">
+                          {message.isTyping && index === typingMessageIndex ? (
+                            <>
+                              {displayedContent}
+                              <span className="inline-block w-1 h-4 bg-current ml-0.5 animate-pulse" />
+                            </>
+                          ) : (
+                            <ReactMarkdown
+                              components={{
+                                // Inline code (for colors)
+                                code: ({ className, children, ...props }) => {
+                                  // Check if this is inline code by looking at className
+                                  const isInline =
+                                    !className?.includes("language-");
+                                  return isInline ? (
+                                    <code
+                                      className="px-1.5 py-0.5 rounded text-xs font-mono bg-gray-800 text-white"
+                                      {...props}
+                                    >
+                                      {children}
+                                    </code>
+                                  ) : (
+                                    <code
+                                      className="block px-2 py-1 rounded text-xs font-mono bg-gray-800 text-white overflow-x-auto"
+                                      {...props}
+                                    >
+                                      {children}
+                                    </code>
+                                  );
+                                },
+                                // Bold text
+                                strong: ({ children, ...props }) => (
+                                  <strong className="font-bold" {...props}>
+                                    {children}
+                                  </strong>
+                                ),
+                                // Lists
+                                ul: ({ children, ...props }) => (
+                                  <ul
+                                    className="list-disc ml-4 space-y-1"
                                     {...props}
                                   >
                                     {children}
-                                  </code>
-                                ) : (
-                                  <code
-                                    className="block px-2 py-1 rounded text-xs font-mono bg-gray-800 text-white overflow-x-auto"
-                                    {...props}
-                                  >
+                                  </ul>
+                                ),
+                                li: ({ children, ...props }) => (
+                                  <li className="text-sm" {...props}>
                                     {children}
-                                  </code>
-                                );
-                              },
-                              // Bold text
-                              strong: ({ children, ...props }) => (
-                                <strong className="font-bold" {...props}>
-                                  {children}
-                                </strong>
-                              ),
-                              // Lists
-                              ul: ({ children, ...props }) => (
-                                <ul
-                                  className="list-disc ml-4 space-y-1"
-                                  {...props}
-                                >
-                                  {children}
-                                </ul>
-                              ),
-                              li: ({ children, ...props }) => (
-                                <li className="text-sm" {...props}>
-                                  {children}
-                                </li>
-                              ),
-                            }}
-                          >
-                            {message.content}
-                          </ReactMarkdown>
-                        )}
-                      </div>
-
-                      {/* ⭐ NEW: Show config changes if available */}
-                      {message.configChanges && !message.isTyping && (
-                        <ConfigChangesDisplay changes={message.configChanges} />
-                      )}
-
-                      {/* Show suggestion badge if config is available */}
-                      {message.config && !message.isTyping && (
-                        <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">
-                          <p className="font-semibold text-blue-900 mb-1 flex items-center gap-2">
-                            <Sparkles className="h-4 w-4" />
-                            AI Configuration Ready
-                          </p>
-                          <p className="text-blue-700 text-xs">
-                            {currentConfig
-                              ? "Check the diff view in the editor to review changes →"
-                              : "This configuration has been generated and can be applied →"}
-                          </p>
+                                  </li>
+                                ),
+                              }}
+                            >
+                              {displayContent}
+                            </ReactMarkdown>
+                          )}
                         </div>
-                      )}
 
-                      {/* Show suggestions if available */}
-                      {message.suggestions &&
-                        message.suggestions.length > 0 &&
-                        !message.isTyping && (
-                          <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-                            <p className="font-semibold text-green-900 mb-2 flex items-center gap-2">
-                              <Lightbulb className="h-4 w-4" />
-                              คำแนะนำถัดไป / Next Suggestions
-                            </p>
-                            <div className="space-y-1">
-                              {message.suggestions.map((suggestion, idx) => (
-                                <button
-                                  key={idx}
-                                  onClick={() => {
-                                    // Special handling for column suggestion
-                                    if (
-                                      suggestion.includes(
-                                        "Available Columns"
-                                      ) &&
-                                      tableSchema?.columns
-                                    ) {
-                                      handleShowColumnsToAI();
-                                    } else {
-                                      setInput(suggestion);
-                                    }
-                                  }}
-                                  className="block w-full text-left text-xs text-green-700 hover:text-green-900 hover:bg-green-100 p-2 rounded border border-green-200 hover:border-green-300 transition-colors"
-                                >
-                                  💡 {suggestion}
-                                </button>
-                              ))}
-
-                              {/* Show columns button if no table schema and it's the first conversation */}
-                              {!tableSchema &&
-                                tableSchema?.columns?.length === 0 &&
-                                messages.length <= 2 && (
-                                  <button
-                                    onClick={handleShowColumnsToAI}
-                                    className="block w-full text-left text-xs bg-blue-100 text-blue-700 hover:text-blue-900 hover:bg-blue-200 p-2 rounded border border-blue-200 hover:border-blue-300 transition-colors font-medium"
-                                  >
-                                    🔍 แสดง Columns ให้ AI ดู (Auto-send columns
-                                    info)
-                                  </button>
-                                )}
-                            </div>
-                          </div>
+                        {/* ⭐ NEW: Show config changes if available */}
+                        {displayChanges && !message.isTyping && (
+                          <ConfigChangesDisplay changes={displayChanges} />
                         )}
 
-                      <div className="text-[10px] opacity-60 mt-1">
-                        {message.timestamp.toLocaleTimeString("th-TH", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
+                        {/* Show suggestions if available */}
+                        {message.suggestions &&
+                          message.suggestions.length > 0 &&
+                          !message.isTyping && (
+                            <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                              <p className="font-semibold text-green-900 mb-2 flex items-center gap-2">
+                                <Lightbulb className="h-4 w-4" />
+                                คำแนะนำถัดไป / Next Suggestions
+                              </p>
+                              <div className="space-y-1">
+                                {message.suggestions.map((suggestion, idx) => (
+                                  <button
+                                    key={idx}
+                                    onClick={() => {
+                                      // Special handling for column suggestion
+                                      if (
+                                        suggestion.includes(
+                                          "Available Columns"
+                                        ) &&
+                                        tableSchema?.columns
+                                      ) {
+                                        handleShowColumnsToAI();
+                                      } else {
+                                        setInput(suggestion);
+                                      }
+                                    }}
+                                    className="block w-full text-left text-xs text-green-700 hover:text-green-900 hover:bg-green-100 p-2 rounded border border-green-200 hover:border-green-300 transition-colors"
+                                  >
+                                    💡 {suggestion}
+                                  </button>
+                                ))}
+
+                                {/* Show columns button if no table schema and it's the first conversation */}
+                                {!tableSchema &&
+                                  tableSchema?.columns?.length === 0 &&
+                                  messages.length <= 2 && (
+                                    <button
+                                      onClick={handleShowColumnsToAI}
+                                      className="block w-full text-left text-xs bg-blue-100 text-blue-700 hover:text-blue-900 hover:bg-blue-200 p-2 rounded border border-blue-200 hover:border-blue-300 transition-colors font-medium"
+                                    >
+                                      🔍 แสดง Columns ให้ AI ดู (Auto-send
+                                      columns info)
+                                    </button>
+                                  )}
+                              </div>
+                            </div>
+                          )}
+
+                        <div className="text-[10px] opacity-60 mt-1">
+                          {message.timestamp.toLocaleTimeString("th-TH", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
                 {/* ⭐ Agent Steps & Loading indicator */}
                 {isLoading && (
                   <div className="flex justify-start">
