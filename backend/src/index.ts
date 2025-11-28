@@ -47,8 +47,7 @@ if (process.env[serviceAccountEnvKey]) {
   console.log(`✅ Firebase initialized with ${environment} service account`);
 } else if (process.env.FIREBASE_SERVICE_ACCOUNT) {
   // Fallback to legacy FIREBASE_SERVICE_ACCOUNT
-  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-  serviceAccountCredentials = serviceAccount;
+  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
@@ -57,11 +56,10 @@ if (process.env[serviceAccountEnvKey]) {
 } else {
   // Try to use service account file for flexboard-v2
   try {
-    const serviceAccount = require(path.join(
+    serviceAccount = require(path.join(
       __dirname,
       "../flexboard-v2-firebase-adminsdk-fbsvc-fca7f36834.json"
     ));
-    serviceAccountCredentials = serviceAccount;
 
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
