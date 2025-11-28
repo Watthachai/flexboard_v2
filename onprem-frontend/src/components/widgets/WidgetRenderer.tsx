@@ -18,16 +18,24 @@ import ProgressBarWidget from "./ProgressBarWidget";
 import MetricCardWidget from "./MetricCardWidget";
 import ScatterPlotWidget from "./ScatterPlotWidget";
 
+interface FilterCondition {
+  field: string;
+  operator: string;
+  value: any;
+}
+
 interface WidgetRendererProps {
   widget: any;
   tenantId: string;
   dataSourceId: string;
+  globalFilters?: FilterCondition[];
 }
 
 export default function WidgetRenderer({
   widget,
   tenantId,
   dataSourceId,
+  globalFilters = [],
 }: WidgetRendererProps) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -106,6 +114,43 @@ export default function WidgetRenderer({
             } else {
               selectFields.push(field);
             }
+          } else if (widget.dataConfig.multiLine && widget.dataConfig.lines) {
+            // For multi-line charts - add xField and all yFields from lines array
+            if (xField) {
+              if (!hasGroupBy || (groupBy && groupBy.includes(xField))) {
+                selectFields.push(xField);
+              }
+            }
+            // Add each line's yField with its aggregation
+            widget.dataConfig.lines.forEach((line: any) => {
+              if (line.yField) {
+                const lineAgg = line.aggregation || aggregation;
+                if (lineAgg && hasGroupBy) {
+                  selectFields.push(
+                    `${lineAgg.toUpperCase()}(${line.yField}) as ${line.yField}`
+                  );
+                } else {
+                  selectFields.push(line.yField);
+                }
+              }
+            });
+          } else if (widget.dataConfig.seriesField) {
+            // For seriesField multi-line charts - need xField, seriesField and yField
+            const { seriesField } = widget.dataConfig;
+            if (xField) {
+              selectFields.push(xField);
+            }
+            // seriesField must be in SELECT for GROUP BY to work
+            selectFields.push(seriesField);
+            if (yField) {
+              if (aggregation && hasGroupBy) {
+                selectFields.push(
+                  `${aggregation.toUpperCase()}(${yField}) as ${yField}`
+                );
+              } else {
+                selectFields.push(yField);
+              }
+            }
           } else {
             // Standard xField/yField approach
             if (xField) {
@@ -135,9 +180,10 @@ export default function WidgetRenderer({
           const topClause = shouldLimit ? `TOP ${limit} ` : "";
           query = `SELECT ${topClause}${selectClause} FROM ${table}`;
 
-          // Add WHERE clause for filters
-          if (filters && filters.length > 0) {
-            const whereConditions = filters.map((filter: any) => {
+          // Add WHERE clause for filters (including global filters)
+          const allFilters = [...(filters || []), ...globalFilters];
+          if (allFilters.length > 0) {
+            const whereConditions = allFilters.map((filter: any) => {
               if (filter.operator === "IN") {
                 const values = Array.isArray(filter.value)
                   ? filter.value.map((v: any) => `'${v}'`).join(",")
@@ -146,6 +192,12 @@ export default function WidgetRenderer({
               } else if (filter.operator === "LIKE") {
                 return `${filter.field} LIKE '%${filter.value}%'`;
               } else {
+                // Check if value looks like a date (YYYY-MM-DD format)
+                const isDateValue = /^\d{4}-\d{2}-\d{2}$/.test(filter.value);
+                if (isDateValue) {
+                  // For SQL Server datetime comparison, use CAST to date
+                  return `CAST(${filter.field} AS DATE) ${filter.operator} '${filter.value}'`;
+                }
                 return `${filter.field} ${filter.operator} '${filter.value}'`;
               }
             });
@@ -220,7 +272,14 @@ export default function WidgetRenderer({
     }
 
     fetchData();
-  }, [tenantId, dataSourceId, widget.id, widget.dataConfig]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    tenantId,
+    dataSourceId,
+    widget.id,
+    JSON.stringify(widget.dataConfig),
+    JSON.stringify(globalFilters),
+  ]);
 
   // Loading state
   if (loading) {

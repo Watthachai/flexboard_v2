@@ -31,6 +31,8 @@ interface DataSource {
   name: string;
   type: string;
   status: string;
+  mockMode?: boolean;
+  mockDataId?: string;
   connection: {
     host?: string;
     port?: number;
@@ -240,7 +242,7 @@ export function SettingsTab({
                   );
                 })()}
 
-                {/* Show selected table info if exists */}
+                {/* Show selected table/mock data info if exists */}
                 {dashboard.dataSourceId &&
                   (() => {
                     const ds = dataSources.find(
@@ -251,8 +253,35 @@ export function SettingsTab({
                     console.log("SettingsTab - Datasource Details:", {
                       id: ds?.id,
                       name: ds?.name,
+                      mockMode: ds?.mockMode,
+                      mockDataId: ds?.mockDataId,
                       selectedTable: dashboard.selectedTable,
                     });
+
+                    // Mock Data Mode
+                    if (ds?.mockMode && ds?.mockDataId) {
+                      return (
+                        <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg space-y-2">
+                          <h4 className="font-medium text-purple-900 flex items-center gap-2">
+                            <Database className="h-4 w-4" />
+                            Mock Data Source
+                          </h4>
+                          <div className="text-sm">
+                            <span className="text-purple-700">
+                              Mock Dataset ID:
+                            </span>{" "}
+                            <span className="font-mono font-semibold text-purple-900">
+                              {ds.mockDataId}
+                            </span>
+                          </div>
+                          <p className="text-xs text-purple-700">
+                            💡 Using mock data instead of live database
+                            connection. Click &quot;Edit&quot; to change or
+                            upload different mock data.
+                          </p>
+                        </div>
+                      );
+                    }
 
                     // Live Database with Table Selected
                     if (dashboard.selectedTable) {

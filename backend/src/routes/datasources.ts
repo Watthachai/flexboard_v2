@@ -23,6 +23,7 @@ const CreateDataSourceSchema = z.object({
     "bigquery",
     "rest_api",
     "google_sheet",
+    "mockdata", // New: Mock data type
   ]),
   connection: z.object({
     // SQL connections
@@ -48,6 +49,10 @@ const CreateDataSourceSchema = z.object({
   }),
   status: z.string().optional(),
   availableTables: z.array(z.string()).optional(),
+  mockMode: z.boolean().optional(), // New: Toggle for mock mode
+  mockDataId: z.string().optional(), // New: Reference to mock dataset
+  skipConnectionTest: z.boolean().optional(), // New: Skip test for on-prem only DBs
+  defaultTable: z.string().optional(), // New: Default table when test is skipped
 });
 
 const TestConnectionSchema = z.object({
@@ -59,6 +64,7 @@ const TestConnectionSchema = z.object({
     "bigquery",
     "rest_api",
     "google_sheet",
+    "mockdata", // New: Mock data type
   ]),
   connection: z.object({
     host: z.string().optional(),
@@ -74,6 +80,8 @@ const TestConnectionSchema = z.object({
     sheetName: z.string().optional(),
     ssl: z.boolean().optional(),
   }),
+  mockMode: z.boolean().optional(), // New: Toggle for mock mode
+  mockDataId: z.string().optional(), // New: Reference to mock dataset
 });
 
 const ExecuteQuerySchema = z.object({
@@ -120,6 +128,8 @@ dataSourcesRouter.get("/:tenantId/datasources", async (req: any, res: any) => {
         lastTested: data.lastTested?.toDate(),
         status: data.status || "untested",
         errorMessage: data.errorMessage,
+        mockMode: data.mockMode || false, // New: Mock mode flag
+        mockDataId: data.mockDataId || null, // New: Mock data reference
         createdAt: data.createdAt?.toDate(),
         updatedAt: data.updatedAt?.toDate(),
       };
@@ -177,7 +187,15 @@ dataSourcesRouter.post(
   async (req: any, res: any) => {
     try {
       const { tenantId } = req.params;
-      const { name, type, connection, status, availableTables } = req.body;
+      const {
+        name,
+        type,
+        connection,
+        status,
+        availableTables,
+        mockMode,
+        mockDataId,
+      } = req.body;
       const user = req.user;
 
       // Verify user has access (Super Admin can access any tenant)
@@ -196,6 +214,8 @@ dataSourcesRouter.post(
         connection,
         availableTables: availableTables || [],
         status: status || "untested",
+        mockMode: mockMode || false,
+        mockDataId: mockDataId || null,
         createdAt: new Date(),
         createdBy: user.uid,
         updatedAt: new Date(),
@@ -222,8 +242,16 @@ dataSourcesRouter.put(
   async (req: any, res: any) => {
     try {
       const { tenantId, dataSourceId } = req.params;
-      const { name, type, connection, status, availableTables, selectedTable } =
-        req.body;
+      const {
+        name,
+        type,
+        connection,
+        status,
+        availableTables,
+        selectedTable,
+        mockMode,
+        mockDataId,
+      } = req.body;
       const user = req.user;
 
       // Verify user has access (Super Admin can access any tenant)
@@ -273,6 +301,16 @@ dataSourcesRouter.put(
       // Include selectedTable if provided
       if (selectedTable !== undefined) {
         updateData.selectedTable = selectedTable;
+      }
+
+      // Include mockMode if provided
+      if (mockMode !== undefined) {
+        updateData.mockMode = mockMode;
+      }
+
+      // Include mockDataId if provided
+      if (mockDataId !== undefined) {
+        updateData.mockDataId = mockDataId;
       }
 
       await docRef.update(updateData);
@@ -464,7 +502,23 @@ dataSourcesRouter.post(
         return res.status(404).json({ error: "Data source not found" });
       }
 
-      const { type, connection } = dataSource as any;
+      const { type, connection, mockMode, mockDataId } = dataSource as any;
+
+      // If mock mode, get columns from mock data
+      if (mockMode && mockDataId) {
+        const mockDataDoc = await db
+          .doc(`tenants/${tenantId}/mockdata/${mockDataId}`)
+          .get();
+
+        if (!mockDataDoc.exists) {
+          return res.status(404).json({ error: "Mock data not found" });
+        }
+
+        const mockData = mockDataDoc.data();
+        const columns = mockData?.columns || [];
+
+        return res.json({ columns });
+      }
 
       // Get columns from database using the connector
       const { getDatabaseConnector } = await import(
@@ -510,9 +564,50 @@ dataSourcesRouter.post(
         return res.status(404).json({ error: "Data source not found" });
       }
 
-      const { type, connection } = dataSource as any;
+      const { type, connection, mockMode, mockDataId } = dataSource as any;
 
       console.log(`Executing query on ${dataSourceId}:`, query);
+
+      // If mock mode, execute query on mock data
+      if (mockMode && mockDataId) {
+        const mockDataDoc = await db
+          .doc(`tenants/${tenantId}/mockdata/${mockDataId}`)
+          .get();
+
+        if (!mockDataDoc.exists) {
+          return res.status(404).json({ error: "Mock data not found" });
+        }
+
+        const mockData = mockDataDoc.data();
+        const allData = mockData?.data || [];
+        const columns = mockData?.columns || [];
+
+        // Execute query on mock data using executeMockQuery
+        const { executeMockQuery } = await import("./mockdata.js");
+        const startTime = Date.now();
+        let resultData = executeMockQuery(allData, query);
+
+        // Apply additional LIMIT if specified and not already in query
+        if (
+          limit &&
+          !query.toLowerCase().includes("limit") &&
+          !query.toLowerCase().includes("top")
+        ) {
+          resultData = resultData.slice(0, limit);
+        }
+
+        const executionTime = Date.now() - startTime;
+        console.log(
+          `Mock query executed in ${executionTime}ms, returned ${resultData.length} rows`
+        );
+
+        return res.json({
+          data: resultData,
+          columns: columns,
+          rowCount: resultData.length,
+          executionTime: executionTime,
+        });
+      }
 
       // Apply limit to query if provided
       let finalQuery = query;
@@ -580,7 +675,33 @@ dataSourcesRouter.get(
         return res.status(404).json({ error: "Data source not found" });
       }
 
-      const { type, connection } = dataSource as any;
+      const { type, connection, mockMode, mockDataId } = dataSource as any;
+
+      // If mock mode, return mock data preview
+      if (mockMode && mockDataId) {
+        const mockDataDoc = await db
+          .doc(`tenants/${tenantId}/mockdata/${mockDataId}`)
+          .get();
+
+        if (!mockDataDoc.exists) {
+          return res.status(404).json({ error: "Mock data not found" });
+        }
+
+        const mockData = mockDataDoc.data();
+        const allData = mockData?.data || [];
+        const columns = mockData?.columns || [];
+
+        // Apply limit
+        const limitNum = parseInt(limit as string) || 5;
+        const previewData = allData.slice(0, limitNum);
+
+        return res.json({
+          data: previewData,
+          columns: columns,
+          rowCount: previewData.length,
+          totalRecords: allData.length,
+        });
+      }
 
       // Execute query based on database type
       let query = "";
