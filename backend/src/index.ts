@@ -151,20 +151,24 @@ app.use(
     origin: [
       "http://localhost:9002",
       "http://localhost:3000",
+      "http://localhost:5001",
 
       // FlexBoard Production
       "https://admin.fittflexb.com",
       "https://app.fittflexb.com",
+      "https://api.fittflexb.com",
 
       // FlexBoard Staging
       "https://admin-staging.fittflexb.com",
       "https://app-staging.fittflexb.com",
+      "https://api-staging.fittflexb.com",
 
       // Cloud Run default URLs (for testing)
-      /flexboard-admin-(staging|prod)-.*\.run\.app$/,
-      /flexboard-onprem-(staging|prod)-.*\.run\.app$/,
+      /^https:\/\/flexboard-.*\.run\.app$/,
     ],
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-API-Key"],
   })
 );
 app.use(express.json());

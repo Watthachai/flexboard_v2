@@ -277,7 +277,7 @@ function ConfigChangesDisplay({ changes }: { changes: ConfigChanges }) {
   };
 
   return (
-    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-3 my-2">
+    <div className="bg-linear-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-3 my-2">
       <div className="flex items-center gap-2 mb-2">
         {getActionIcon()}
         <span className="font-medium text-sm text-blue-800">
