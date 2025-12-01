@@ -151,7 +151,9 @@ app.use(
     origin: [
       "http://localhost:9002",
       "http://localhost:3000",
+      "http://localhost:3001", // OnPrem Staging
       "http://localhost:5001",
+      "http://localhost:5002", // OnPrem Staging Proxy
 
       // FlexBoard Production
       "https://admin.fittflexb.com",
@@ -168,7 +170,12 @@ app.use(
     ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-API-Key"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-API-Key",
+      "X-Tenant-ID",
+    ],
   })
 );
 app.use(express.json());
