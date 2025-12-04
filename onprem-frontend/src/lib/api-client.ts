@@ -1,10 +1,20 @@
 /**
  * Centralized API Client for OnPrem Frontend
- * Uses API Key authentication instead of Firebase
+ *
+ * Architecture:
+ * - Cloud Backend: Authentication, Dashboard configs (Firestore)
+ * - Local Proxy: SQL queries to local database
  */
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
+// Cloud Backend URL (for auth, dashboards, configs)
+const CLOUD_BACKEND_URL =
+  process.env.NEXT_PUBLIC_CLOUD_BACKEND_URL ||
+  process.env.NEXT_PUBLIC_BACKEND_URL ||
+  "https://api.fittflexb.com";
+
+// Local SQL Proxy URL (for database queries)
+const LOCAL_PROXY_URL =
+  process.env.NEXT_PUBLIC_LOCAL_PROXY_URL || "http://localhost:5001";
 
 interface FetchOptions extends RequestInit {
   timeout?: number;
@@ -69,7 +79,7 @@ async function fetcher<T>(url: string, options: FetchOptions = {}): Promise<T> {
   }
 }
 
-// ===== AUTHENTICATION APIs =====
+// ===== AUTHENTICATION APIs (Cloud Backend) =====
 
 /**
  * Authenticate with API Key only (backend will find tenant automatically)
@@ -81,7 +91,7 @@ export async function authenticate(
     success: boolean;
     tenant: any;
     allowedTags?: string[];
-  }>(`${BACKEND_URL}/api/onprem/authenticate`, {
+  }>(`${CLOUD_BACKEND_URL}/api/onprem/authenticate`, {
     method: "POST",
     body: JSON.stringify({ apiKey }),
   });
@@ -112,6 +122,7 @@ export async function authenticate(
 export function logout(): void {
   localStorage.removeItem("apiKey");
   localStorage.removeItem("tenantId");
+  localStorage.removeItem("allowedTags");
 
   // Clear cookies
   document.cookie = "apiKey=; path=/; max-age=0";
@@ -125,13 +136,13 @@ export function isAuthenticated(): boolean {
   return !!(getApiKey() && getTenantId());
 }
 
-// ===== DASHBOARD APIs =====
+// ===== DASHBOARD APIs (Cloud Backend) =====
 
 /**
  * Get all dashboards for tenant (OnPrem endpoint)
  */
 export async function getDashboards(_tenantId: string): Promise<any> {
-  return fetcher(`${BACKEND_URL}/api/onprem/dashboards`);
+  return fetcher(`${CLOUD_BACKEND_URL}/api/onprem/dashboards`);
 }
 
 /**
@@ -141,7 +152,7 @@ export async function getDashboardById(
   _tenantId: string,
   dashboardId: string
 ): Promise<any> {
-  return fetcher(`${BACKEND_URL}/api/onprem/dashboards/${dashboardId}`);
+  return fetcher(`${CLOUD_BACKEND_URL}/api/onprem/dashboards/${dashboardId}`);
 }
 
 /**
@@ -151,16 +162,18 @@ export async function getActiveDashboardVersion(
   _tenantId: string,
   dashboardId: string
 ): Promise<any> {
-  return fetcher(`${BACKEND_URL}/api/onprem/dashboards/${dashboardId}/version`);
+  return fetcher(
+    `${CLOUD_BACKEND_URL}/api/onprem/dashboards/${dashboardId}/version`
+  );
 }
 
-// ===== DATA SOURCE APIs =====
+// ===== DATA SOURCE APIs (Cloud Backend for metadata) =====
 
 /**
  * Get all data sources for tenant (OnPrem endpoint)
  */
 export async function getDataSources(_tenantId: string): Promise<any> {
-  return fetcher(`${BACKEND_URL}/api/onprem/datasources`);
+  return fetcher(`${CLOUD_BACKEND_URL}/api/onprem/datasources`);
 }
 
 /**
@@ -170,24 +183,71 @@ export async function getDataSource(
   _tenantId: string,
   dataSourceId: string
 ): Promise<any> {
-  return fetcher(`${BACKEND_URL}/api/onprem/datasources/${dataSourceId}`);
+  return fetcher(`${CLOUD_BACKEND_URL}/api/onprem/datasources/${dataSourceId}`);
 }
 
+// ===== SQL QUERY APIs (Local Proxy) =====
+
 /**
- * Execute query on data source (OnPrem endpoint)
+ * Execute query on LOCAL SQL Server via proxy
+ * Proxy fetches connection config from Cloud based on dataSourceId
  */
 export async function executeQuery(
   _tenantId: string,
   dataSourceId: string,
   query: string
-): Promise<any> {
-  return fetcher(
-    `${BACKEND_URL}/api/onprem/datasources/${dataSourceId}/query`,
-    {
-      method: "POST",
-      body: JSON.stringify({ query }),
-    }
-  );
+): Promise<{ data: any[]; columns: string[] }> {
+  console.log(`🔍 Executing query via local proxy: ${LOCAL_PROXY_URL}/query`);
+  console.log(`   DataSource ID: ${dataSourceId}`);
+
+  const result = await fetcher<{
+    data: any[];
+    columns: string[];
+    rowCount: number;
+    duration: number;
+  }>(`${LOCAL_PROXY_URL}/query`, {
+    method: "POST",
+    body: JSON.stringify({ dataSourceId, query }),
+    timeout: 30000, // Longer timeout for queries
+  });
+
+  return {
+    data: result.data,
+    columns: result.columns,
+  };
+}
+
+/**
+ * Test connection for a specific DataSource
+ */
+export async function testDataSourceConnection(dataSourceId: string): Promise<{
+  status: string;
+  dataSourceName?: string;
+  database?: string;
+  error?: string;
+}> {
+  try {
+    return await fetcher(`${LOCAL_PROXY_URL}/datasources/${dataSourceId}/test`);
+  } catch (error: any) {
+    return {
+      status: "error",
+      error: error.message,
+    };
+  }
+}
+
+/**
+ * Get tables for a specific DataSource
+ */
+export async function getDataSourceTables(dataSourceId: string): Promise<{
+  dataSourceName: string;
+  tables: Array<{
+    TABLE_SCHEMA: string;
+    TABLE_NAME: string;
+    TABLE_TYPE: string;
+  }>;
+}> {
+  return fetcher(`${LOCAL_PROXY_URL}/datasources/${dataSourceId}/tables`);
 }
 
 /**
@@ -294,4 +354,5 @@ export async function updateUserProfile(data: {
   return { success: true };
 }
 
-export { BACKEND_URL };
+// Export URLs for debugging
+export { CLOUD_BACKEND_URL, LOCAL_PROXY_URL };

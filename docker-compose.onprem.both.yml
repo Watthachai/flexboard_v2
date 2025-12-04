@@ -1,0 +1,104 @@
+# ==============================================================================
+# FlexBoard OnPrem - Run BOTH Production & Staging
+# ==============================================================================
+#
+# Ports:
+#   Production:
+#     - Frontend: 3000
+#     - Proxy:    5001
+#
+#   Staging:
+#     - Frontend: 3001
+#     - Proxy:    5002
+#
+# Usage:
+#   docker-compose -f docker-compose.onprem.both.yml up -d --build
+#
+# ==============================================================================
+
+services:
+  # ==================== PRODUCTION ====================
+  proxy-prod:
+    build:
+      context: ./onprem-proxy
+      dockerfile: Dockerfile
+    container_name: flexboard-proxy-prod
+    ports:
+      - "5001:5001"
+    environment:
+      - PORT=5001
+      - CLOUD_BACKEND_URL=https://api.fittflexb.com
+      - IS_DOCKER=true
+    networks:
+      - onprem-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend-prod:
+    build:
+      context: ./onprem-frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_CLOUD_BACKEND_URL=https://api.fittflexb.com
+        - NEXT_PUBLIC_LOCAL_PROXY_URL=http://localhost:5001
+    container_name: flexboard-frontend-prod
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_CLOUD_BACKEND_URL=https://api.fittflexb.com
+      - NEXT_PUBLIC_LOCAL_PROXY_URL=http://localhost:5001
+    depends_on:
+      proxy-prod:
+        condition: service_healthy
+    networks:
+      - onprem-network
+    restart: unless-stopped
+
+  # ==================== STAGING ====================
+  proxy-staging:
+    build:
+      context: ./onprem-proxy
+      dockerfile: Dockerfile
+    container_name: flexboard-proxy-staging
+    ports:
+      - "5002:5001"
+    environment:
+      - PORT=5001
+      - CLOUD_BACKEND_URL=https://api-staging.fittflexb.com
+      - IS_DOCKER=true
+    networks:
+      - onprem-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend-staging:
+    build:
+      context: ./onprem-frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_CLOUD_BACKEND_URL=https://api-staging.fittflexb.com
+        - NEXT_PUBLIC_LOCAL_PROXY_URL=http://localhost:5002
+    container_name: flexboard-frontend-staging
+    ports:
+      - "3001:3000"
+    environment:
+      - NEXT_PUBLIC_CLOUD_BACKEND_URL=https://api-staging.fittflexb.com
+      - NEXT_PUBLIC_LOCAL_PROXY_URL=http://localhost:5002
+    depends_on:
+      proxy-staging:
+        condition: service_healthy
+    networks:
+      - onprem-network
+    restart: unless-stopped
+
+networks:
+  onprem-network:
+    driver: bridge

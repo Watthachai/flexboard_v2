@@ -1,0 +1,68 @@
+# ==============================================================================
+# FlexBoard OnPrem Deployment (Lightweight)
+# ==============================================================================
+#
+# Architecture:
+#   - frontend: Next.js app that displays dashboards (Port 3000)
+#   - proxy: SQL proxy that connects to customer's existing database (Port 5001)
+#
+# Environments:
+#   - Production: api.fittflexb.com
+#   - Staging:    api-staging.fittflexb.com
+#
+# Usage:
+#   Production: docker-compose -f docker-compose.onprem.yml up -d --build
+#   Staging:    ENVIRONMENT=staging docker-compose -f docker-compose.onprem.yml up -d --build
+#
+#   Or use the helper files:
+#   - docker-compose.onprem.prod.yml (Production)
+#   - docker-compose.onprem.staging.yml (Staging)
+#
+# ==============================================================================
+
+services:
+  # ==================== SQL PROXY ====================
+  proxy:
+    build:
+      context: ./onprem-proxy
+      dockerfile: Dockerfile
+    container_name: flexboard-proxy
+    ports:
+      - "5001:5001"
+    environment:
+      - PORT=5001
+      - CLOUD_BACKEND_URL=${CLOUD_BACKEND_URL:-https://api.fittflexb.com}
+      - IS_DOCKER=true
+    networks:
+      - onprem-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ==================== FRONTEND ====================
+  frontend:
+    build:
+      context: ./onprem-frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_CLOUD_BACKEND_URL=${CLOUD_BACKEND_URL:-https://api.fittflexb.com}
+        - NEXT_PUBLIC_LOCAL_PROXY_URL=http://localhost:5001
+    container_name: flexboard-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_CLOUD_BACKEND_URL=${CLOUD_BACKEND_URL:-https://api.fittflexb.com}
+      - NEXT_PUBLIC_LOCAL_PROXY_URL=http://localhost:5001
+    depends_on:
+      proxy:
+        condition: service_healthy
+    networks:
+      - onprem-network
+    restart: unless-stopped
+
+networks:
+  onprem-network:
+    driver: bridge

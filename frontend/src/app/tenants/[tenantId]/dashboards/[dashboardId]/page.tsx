@@ -250,11 +250,19 @@ export default function DashboardDetailPage() {
 
       setPreviewConfig(versionWithConfig.config);
 
-      // Reset global filter values when preview opens
-      setGlobalFilterValues({});
+      // Initialize global filter values with defaultValues from config
+      const config = versionWithConfig.config;
+      const defaultFilterValues: GlobalFilterValues = {};
+      if (config?.filters) {
+        config.filters.forEach((filter: GlobalFilter) => {
+          if (filter.defaultValue !== undefined) {
+            defaultFilterValues[filter.id] = filter.defaultValue;
+          }
+        });
+      }
+      setGlobalFilterValues(defaultFilterValues);
 
       // Fetch dynamic options for filters if needed
-      const config = versionWithConfig.config;
       if (config?.filters && dashboard?.dataSourceId) {
         const dynamicFilters = config.filters.filter(
           (f: any) => f.options === "dynamic"
@@ -723,7 +731,18 @@ export default function DashboardDetailPage() {
                     values={globalFilterValues}
                     onChange={setGlobalFilterValues}
                     dynamicOptions={dynamicFilterOptions}
-                    onReset={() => setGlobalFilterValues({})}
+                    onReset={() => {
+                      // Reset to default values instead of empty
+                      const defaultValues: GlobalFilterValues = {};
+                      (previewConfig.filters as GlobalFilter[]).forEach(
+                        (filter) => {
+                          if (filter.defaultValue !== undefined) {
+                            defaultValues[filter.id] = filter.defaultValue;
+                          }
+                        }
+                      );
+                      setGlobalFilterValues(defaultValues);
+                    }}
                   />
                 )}
 
