@@ -14,27 +14,62 @@ interface DashboardRendererProps {
   onFetchDynamicOptions?: (field: string, table: string) => Promise<string[]>;
 }
 
+// Helper function to extract default values from filters
+function getDefaultFilterValues(filters: GlobalFilter[]): GlobalFilterValues {
+  const defaultValues: GlobalFilterValues = {};
+  filters.forEach((filter: GlobalFilter) => {
+    if (filter.defaultValue !== undefined) {
+      defaultValues[filter.id] = filter.defaultValue;
+    }
+  });
+  return defaultValues;
+}
+
 export function DashboardRenderer({
   config,
   tenantId,
   dataSourceId,
   onFetchDynamicOptions,
 }: DashboardRendererProps) {
+  const filters = useMemo(() => {
+    return config?.filters || [];
+  }, [config]);
+
+  // Initialize globalFilterValues with defaultValues from filters
+  const initialFilterValues = useMemo(() => {
+    return getDefaultFilterValues(filters);
+  }, [filters]);
+
   const [globalFilterValues, setGlobalFilterValues] =
-    useState<GlobalFilterValues>({});
+    useState<GlobalFilterValues>(initialFilterValues);
+
   const [dynamicFilterOptions, setDynamicFilterOptions] = useState<{
     [field: string]: string[];
   }>({});
+
+  // Sync state when initialFilterValues changes (config/filters change)
+  const [prevInitialValues, setPrevInitialValues] =
+    useState(initialFilterValues);
+  if (prevInitialValues !== initialFilterValues) {
+    setPrevInitialValues(initialFilterValues);
+    // Merge new defaults with existing values
+    setGlobalFilterValues((prev) => {
+      const merged = { ...initialFilterValues };
+      // Keep existing user selections
+      Object.keys(prev).forEach((key) => {
+        if (prev[key] !== undefined && prev[key] !== null) {
+          merged[key] = prev[key];
+        }
+      });
+      return merged;
+    });
+  }
 
   const widgets = useMemo(() => {
     if (!config || !config.widgets) {
       return [];
     }
     return config.widgets;
-  }, [config]);
-
-  const filters = useMemo(() => {
-    return config?.filters || [];
   }, [config]);
 
   const gridCols = config?.gridCols || 12;
@@ -167,7 +202,7 @@ export function DashboardRenderer({
             values={globalFilterValues}
             onChange={setGlobalFilterValues}
             dynamicOptions={dynamicFilterOptions}
-            onReset={() => setGlobalFilterValues({})}
+            onReset={() => setGlobalFilterValues(initialFilterValues)}
           />
         </div>
       )}
