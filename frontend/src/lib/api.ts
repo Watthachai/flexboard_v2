@@ -687,6 +687,7 @@ export async function uploadMockData(
     description?: string;
     fileType: "sql" | "json";
     content: string;
+    maxRows?: number;
   }
 ): Promise<MockDataset> {
   // Transform to match backend schema
@@ -695,6 +696,7 @@ export async function uploadMockData(
     data: data.content, // backend expects 'data' not 'content'
     tableName: data.name,
     description: data.description,
+    maxRows: data.maxRows, // Include maxRows for limiting
   };
 
   return fetcher(`/api/tenants/${tenantId}/mockdata`, {
