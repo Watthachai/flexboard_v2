@@ -4,6 +4,17 @@ import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Select,
   SelectContent,
@@ -43,7 +54,10 @@ import {
   Filter,
   X,
   CalendarIcon,
+  MoreHorizontal,
 } from "lucide-react";
+import * as LucideIcons from "lucide-react";
+import { toast } from "sonner";
 import jsPDF from "jspdf";
 
 interface ColumnFilter {
@@ -104,6 +118,9 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
     compact = false,
     headerBackground = "#374151",
     headerColor = "#fff",
+    selectable = false,
+    bulkActions = [],
+    rowActions = [],
   } = styleConfig;
 
   // State for table functionality
@@ -122,6 +139,13 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
   const [configFilters, setConfigFilters] = useState<{ [key: string]: any }>(
     {}
   );
+
+  // Selection state
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
+  const [confirmAction, setConfirmAction] = useState<{
+    action: any;
+    rows: any[];
+  } | null>(null);
 
   // Helper function to format cell values (especially dates)
   const formatCellValue = (value: any): string => {
@@ -758,6 +782,213 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
     setSearchTerm("");
   };
 
+  // Selection handlers
+  const toggleSelectAll = () => {
+    if (selectedRows.size === paginatedData.length) {
+      setSelectedRows(new Set());
+    } else {
+      const allIndices = paginatedData.map((_, idx) => startIndex + idx);
+      setSelectedRows(new Set(allIndices));
+    }
+  };
+
+  const toggleRowSelection = (rowIndex: number) => {
+    const newSelection = new Set(selectedRows);
+    if (newSelection.has(rowIndex)) {
+      newSelection.delete(rowIndex);
+    } else {
+      newSelection.add(rowIndex);
+    }
+    setSelectedRows(newSelection);
+  };
+
+  const getSelectedRowsData = () => {
+    return Array.from(selectedRows).map((index) => sortedData[index]);
+  };
+
+  // Replace template variables in string
+  const replaceTemplateVars = (template: string, row: any, allRows?: any[]) => {
+    let result = template;
+
+    // Replace ${row.field} with actual row values
+    result = result.replace(/\$\{row\.(\w+)\}/g, (_, field) => {
+      const value = row[field];
+      // Escape quotes and backslashes for JSON safety
+      if (typeof value === "string") {
+        return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+      }
+      return value !== undefined ? String(value) : "";
+    });
+
+    // Replace ${appliedFilters} with current filter state
+    result = result.replace(
+      /\$\{appliedFilters\}/g,
+      JSON.stringify(activeConfigFilters)
+    );
+
+    // Replace ${timestamp} with current timestamp
+    result = result.replace(/\$\{timestamp\}/g, new Date().toISOString());
+
+    // Replace ${dashboardId} if available
+    result = result.replace(/\$\{dashboardId\}/g, widget.id || "");
+
+    // Replace ${count} with number of rows
+    if (allRows) {
+      result = result.replace(/\{count\}/g, String(allRows.length));
+    }
+
+    return result;
+  };
+
+  // Build payload with proper template variable replacement
+  const buildPayload = (template: any, row: any, allRows: any[]): any => {
+    if (template === null || template === undefined) {
+      return template;
+    }
+
+    // Handle string values with template variables
+    if (typeof template === "string") {
+      // Check for special variables that need object/array replacement
+      if (template === "${selectedRows}") {
+        return allRows;
+      }
+      if (template === "${appliedFilters}") {
+        return activeConfigFilters;
+      }
+      if (template === "${timestamp}") {
+        return new Date().toISOString();
+      }
+      if (template === "${dashboardId}") {
+        return widget.id || "";
+      }
+
+      // Check for ${row.field} patterns
+      const rowFieldMatch = template.match(/^\$\{row\.(\w+)\}$/);
+      if (rowFieldMatch) {
+        return row[rowFieldMatch[1]];
+      }
+
+      // Otherwise, replace inline variables in string
+      return replaceTemplateVars(template, row, allRows);
+    }
+
+    // Handle arrays
+    if (Array.isArray(template)) {
+      return template.map((item) => buildPayload(item, row, allRows));
+    }
+
+    // Handle objects
+    if (typeof template === "object") {
+      const result: any = {};
+      for (const [key, value] of Object.entries(template)) {
+        result[key] = buildPayload(value, row, allRows);
+      }
+      return result;
+    }
+
+    // Return primitive values as-is
+    return template;
+  };
+
+  // Execute bulk action
+  const executeBulkAction = async (action: any) => {
+    const selectedData = getSelectedRowsData();
+
+    if (selectedData.length === 0) {
+      toast.error("กรุณาเลือกข้อมูลอย่างน้อย 1 รายการ");
+      return;
+    }
+
+    // Show confirmation dialog if configured
+    if (action.confirmMessage) {
+      setConfirmAction({ action, rows: selectedData });
+      return;
+    }
+
+    await performApiCall(action, selectedData);
+  };
+
+  // Execute row action
+  const executeRowAction = async (action: any, row: any) => {
+    if (action.type === "navigation") {
+      const url = replaceTemplateVars(action.url, row);
+      window.location.href = url;
+      return;
+    }
+
+    await performApiCall(action, [row]);
+  };
+
+  // Perform API call
+  const performApiCall = async (action: any, rows: any[]) => {
+    try {
+      const { apiConfig } = action;
+
+      // Replace variables in URL
+      let url = apiConfig.url;
+      if (rows.length === 1) {
+        url = replaceTemplateVars(url, rows[0]);
+      }
+
+      // Replace variables in headers
+      const headers: any = {};
+      if (apiConfig.headers) {
+        Object.entries(apiConfig.headers).forEach(([key, value]) => {
+          headers[key] = replaceTemplateVars(String(value), {}, rows);
+        });
+      }
+
+      // Build payload from template with proper variable replacement
+      let payload = {};
+      if (apiConfig.payloadTemplate) {
+        payload = buildPayload(apiConfig.payloadTemplate, rows[0], rows);
+      }
+
+      // Make API call
+      const response = await fetch(url, {
+        method: apiConfig.method || "POST",
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.statusText}`);
+      }
+
+      // Show success message
+      const successMsg = action.successMessage
+        ? replaceTemplateVars(action.successMessage, {}, rows)
+        : `ดำเนินการสำเร็จ ${rows.length} รายการ`;
+      toast.success(successMsg);
+
+      // Clear selection after successful bulk action
+      if (rows.length > 1) {
+        setSelectedRows(new Set());
+      }
+    } catch (error) {
+      console.error("API call failed:", error);
+      const errorMsg = action.errorMessage || "เกิดข้อผิดพลาดในการดำเนินการ";
+      toast.error(errorMsg);
+    } finally {
+      setConfirmAction(null);
+    }
+  };
+
+  // Get icon component from icon name
+  const getIcon = (iconName: string) => {
+    const IconComponent = (LucideIcons as any)[
+      iconName
+        .split("-")
+        .map((part, i) =>
+          i === 0
+            ? part.charAt(0).toUpperCase() + part.slice(1)
+            : part.charAt(0).toUpperCase() + part.slice(1)
+        )
+        .join("")
+    ];
+    return IconComponent ? <IconComponent className="h-4 w-4" /> : null;
+  };
+
   const getSortIcon = (columnKey: string) => {
     if (sortConfig.key !== columnKey)
       return <ArrowUpDown className="h-4 w-4 ml-1" />;
@@ -1085,6 +1316,36 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
           </div>
         )}
 
+        {/* Bulk Actions Toolbar */}
+        {selectable && selectedRows.size > 0 && bulkActions.length > 0 && (
+          <div className="flex items-center justify-between mt-2 p-2 bg-blue-50 rounded-lg border border-blue-200">
+            <span className="text-sm font-medium text-blue-700">
+              เลือกแล้ว {selectedRows.size} รายการ
+            </span>
+            <div className="flex items-center space-x-2">
+              {bulkActions.map((action: any) => (
+                <Button
+                  key={action.id}
+                  size="sm"
+                  variant="outline"
+                  onClick={() => executeBulkAction(action)}
+                  className="bg-white"
+                >
+                  {action.icon && getIcon(action.icon)}
+                  <span className="ml-2">{action.label}</span>
+                </Button>
+              ))}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setSelectedRows(new Set())}
+              >
+                ยกเลิก
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Config Filters */}
         {filtersEnabled && showFilterBar && configFilterDefs.length > 0 && (
           <div className="mt-3 p-3 bg-gray-50 rounded-lg border">
@@ -1189,6 +1450,19 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
           <Table>
             <TableHeader className="sticky top-0 z-10">
               <TableRow style={{ backgroundColor: headerBackground }}>
+                {/* Checkbox column */}
+                {selectable && (
+                  <TableHead className="w-12" style={{ color: headerColor }}>
+                    <Checkbox
+                      checked={
+                        selectedRows.size === paginatedData.length &&
+                        paginatedData.length > 0
+                      }
+                      onCheckedChange={toggleSelectAll}
+                    />
+                  </TableHead>
+                )}
+
                 {columns.map((col, index) => (
                   <TableHead
                     key={index}
@@ -1204,44 +1478,97 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
                     </div>
                   </TableHead>
                 ))}
+
+                {/* Row actions header */}
+                {rowActions.length > 0 && (
+                  <TableHead className="w-12" style={{ color: headerColor }}>
+                    Actions
+                  </TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedData.map((row, rowIndex) => (
-                <TableRow
-                  key={rowIndex}
-                  className={`
-                    ${striped && rowIndex % 2 === 0 ? "bg-gray-50" : ""}
-                    ${hoverable ? "hover:bg-gray-100" : ""}
-                    ${bordered ? "border-b" : ""}
-                    ${compact ? "text-sm" : ""}
-                  `}
-                >
-                  {columns.map((col, colIndex) => {
-                    const rawValue = row[col];
-                    const cellValue = formatCellValue(rawValue);
+              {paginatedData.map((row, rowIndex) => {
+                const actualRowIndex = startIndex + rowIndex;
+                const isSelected = selectedRows.has(actualRowIndex);
 
-                    const conditionalStyle =
-                      conditionalFormatting?.enabled &&
-                      conditionalFormatting.rules
-                        ? getConditionalStyle(
-                            rawValue,
-                            conditionalFormatting.rules
-                          )
-                        : {};
-
-                    return (
-                      <TableCell
-                        key={colIndex}
-                        className={compact ? "py-1 px-2" : "py-2 px-4"}
-                        style={conditionalStyle}
-                      >
-                        {cellValue}
+                return (
+                  <TableRow
+                    key={rowIndex}
+                    className={`
+                      ${striped && rowIndex % 2 === 0 ? "bg-gray-50" : ""}
+                      ${hoverable ? "hover:bg-gray-100" : ""}
+                      ${bordered ? "border-b" : ""}
+                      ${compact ? "text-sm" : ""}
+                      ${isSelected ? "bg-blue-50" : ""}
+                    `}
+                  >
+                    {/* Checkbox cell */}
+                    {selectable && (
+                      <TableCell className="w-12">
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() =>
+                            toggleRowSelection(actualRowIndex)
+                          }
+                        />
                       </TableCell>
-                    );
-                  })}
-                </TableRow>
-              ))}
+                    )}
+
+                    {columns.map((col, colIndex) => {
+                      const rawValue = row[col];
+                      const cellValue = formatCellValue(rawValue);
+
+                      const conditionalStyle =
+                        conditionalFormatting?.enabled &&
+                        conditionalFormatting.rules
+                          ? getConditionalStyle(
+                              rawValue,
+                              conditionalFormatting.rules
+                            )
+                          : {};
+
+                      return (
+                        <TableCell
+                          key={colIndex}
+                          className={compact ? "py-1 px-2" : "py-2 px-4"}
+                          style={conditionalStyle}
+                        >
+                          {cellValue}
+                        </TableCell>
+                      );
+                    })}
+
+                    {/* Row actions cell */}
+                    {rowActions.length > 0 && (
+                      <TableCell className="w-12">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {rowActions.map((action: any) => (
+                              <DropdownMenuItem
+                                key={action.id}
+                                onClick={() => executeRowAction(action, row)}
+                              >
+                                {action.icon && getIcon(action.icon)}
+                                <span className="ml-2">{action.label}</span>
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>
@@ -1312,6 +1639,38 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
           </div>
         )}
       </CardContent>
+
+      {/* Confirmation Dialog */}
+      <AlertDialog
+        open={confirmAction !== null}
+        onOpenChange={(open) => !open && setConfirmAction(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ยืนยันการดำเนินการ</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmAction &&
+                replaceTemplateVars(
+                  confirmAction.action.confirmMessage,
+                  {},
+                  confirmAction.rows
+                )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirmAction) {
+                  performApiCall(confirmAction.action, confirmAction.rows);
+                }
+              }}
+            >
+              ยืนยัน
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }
