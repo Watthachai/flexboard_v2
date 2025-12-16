@@ -2,8 +2,9 @@
 
 > 📚 **คู่มือฉบับสมบูรณ์** - รวมทุกอย่างไว้ในไฟล์เดียว
 >
-> 📅 **Last Updated:** 2025-12-03  
-> 📦 **Version:** v1.0.0
+> 📅 **Last Updated:** 2025-12-04  
+> 📦 **Docker Version:** v1.0.0  
+> 📦 **Node.js Traditional Package:** v1.0.1
 
 ---
 
@@ -12,13 +13,14 @@
 1. [Quick Start (Dev Team)](#1-quick-start-dev-team)
 2. [Overview & Architecture](#2-overview--architecture)
 3. [Development Setup](#3-development-setup)
-4. [Building Customer Package](#4-building-customer-package)
-5. [Registry Deployment](#5-registry-deployment)
-6. [Customer Installation](#6-customer-installation)
-7. [Admin Configuration](#7-admin-configuration)
-8. [Troubleshooting](#8-troubleshooting)
-9. [Scripts Reference](#9-scripts-reference)
-10. [Changelog](#10-changelog)
+4. [Building Customer Package (Docker)](#4-building-customer-package)
+5. [Node.js Traditional Package (No Docker)](#5-nodejs-traditional-package-no-docker)
+6. [Registry Deployment](#6-registry-deployment)
+7. [Customer Installation](#7-customer-installation)
+8. [Admin Configuration](#8-admin-configuration)
+9. [Troubleshooting](#9-troubleshooting)
+10. [Scripts Reference](#10-scripts-reference)
+11. [Changelog](#11-changelog)
 
 ---
 
@@ -348,7 +350,123 @@ dist/flexboard-onprem-v1.0.0/
 
 ---
 
-## 5. Registry Deployment
+## 5. Node.js Traditional Package (No Docker)
+
+> 🚀 **สำหรับลูกค้าที่ไม่ต้องการใช้ Docker** - รันด้วย Node.js โดยตรง
+
+### 5.1 Requirements
+
+- **Node.js 18+** (แนะนำ Node.js 20 หรือ 22)
+- **Windows 10/11**, **Windows Server 2016+**, **macOS**, หรือ **Linux**
+- **Internet connection** (สำหรับ authentication กับ Cloud Backend)
+
+### 5.2 Building Traditional Package
+
+```bash
+# Build package
+./scripts/build-traditional-package.sh 1.0.1
+
+# Output:
+# dist/traditional/flexboard-onprem-v1.0.1-traditional.zip (~13MB)
+```
+
+**Package Structure:**
+
+```
+flexboard-onprem-v1.0.1-traditional/
+├── frontend/               # Next.js Standalone Build
+│   ├── server.js          # Entry point
+│   ├── .next/             # Build output (includes BUILD_ID, server/, static/)
+│   ├── node_modules/      # Minimal dependencies
+│   ├── public/            # Static files
+│   └── package.json
+├── proxy/                  # SQL Proxy
+│   ├── dist/              # Compiled TypeScript
+│   ├── node_modules/
+│   └── package.json
+├── logs/                   # Service logs (created on start)
+├── .env                    # Configuration
+├── .env.example           # Configuration template
+├── install.sh / install.bat
+├── start.sh / start.bat
+├── stop.sh / stop.bat
+├── status.sh / status.bat
+├── upgrade.sh
+├── README.md
+└── VERSION
+```
+
+### 5.3 Installation (Customer Side)
+
+**Windows:**
+
+1. แตก `flexboard-onprem-v1.0.1-traditional.zip`
+2. ดับเบิลคลิก `install.bat`
+3. ดับเบิลคลิก `start.bat`
+4. เปิด http://localhost:3000
+
+**macOS/Linux:**
+
+```bash
+unzip flexboard-onprem-v1.0.1-traditional.zip
+cd flexboard-onprem-v1.0.1-traditional
+chmod +x *.sh
+./install.sh
+./start.sh
+```
+
+### 5.4 Configuration
+
+แก้ไขไฟล์ `.env`:
+
+```bash
+# FlexBoard OnPrem Configuration
+FLEXBOARD_VERSION=1.0.1
+
+# Proxy Settings
+PROXY_PORT=5001
+CLOUD_BACKEND_URL=https://api.fittflexb.com
+
+# Frontend Settings
+FRONTEND_PORT=3000
+NEXT_PUBLIC_API_URL=https://api.fittflexb.com
+NEXT_PUBLIC_ONPREM_PROXY_URL=http://localhost:5001
+```
+
+### 5.5 Commands Reference
+
+| Action  | Windows       | macOS/Linux    |
+| ------- | ------------- | -------------- |
+| Install | `install.bat` | `./install.sh` |
+| Start   | `start.bat`   | `./start.sh`   |
+| Stop    | `stop.bat`    | `./stop.sh`    |
+| Status  | `status.bat`  | `./status.sh`  |
+
+### 5.6 Viewing Logs
+
+```bash
+# Proxy logs
+cat logs/proxy.log
+
+# Frontend logs
+cat logs/frontend.log
+```
+
+### 5.7 Comparison: Docker vs Traditional
+
+| Feature           | Docker Package               | Traditional Package    |
+| ----------------- | ---------------------------- | ---------------------- |
+| Size              | ~741MB (full) / ~10KB (lite) | ~13MB                  |
+| Requirements      | Docker Desktop               | Node.js 18+            |
+| Isolation         | Container isolated           | Runs on host           |
+| Port conflicts    | Easy to manage               | May conflict           |
+| Updates           | `docker pull`                | Replace files          |
+| Multi-environment | Easy (separate containers)   | Need different folders |
+| Recommended for   | Production servers           | Development / Testing  |
+
+---
+
+## 6. Registry Deployment
 
 ### 5.1 Push to Registry
 
@@ -409,7 +527,7 @@ ghcr.io/watthachai/flexboard-proxy:v1.0.0
 
 ---
 
-## 6. Customer Installation
+## 7. Customer Installation
 
 ### 6.1 Full Package Installation
 
@@ -458,7 +576,7 @@ chmod +x *.sh
 
 ---
 
-## 7. Admin Configuration
+## 8. Admin Configuration
 
 ### 7.1 Before Sending to Customer
 
@@ -492,7 +610,7 @@ chmod +x *.sh
 
 ---
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 ### 8.1 Connection Errors
 
@@ -549,7 +667,7 @@ docker exec -it flexboard-demo-db /docker-entrypoint-initdb.d/init-db.sh
 
 ---
 
-## 9. Scripts Reference
+## 10. Scripts Reference
 
 ### 9.1 Available Scripts
 
@@ -618,7 +736,7 @@ export GITHUB_TOKEN=ghp_xxxxx
 
 ---
 
-## 10. Changelog
+## 11. Changelog
 
 ### v1.0.0 (2025-12-02)
 
