@@ -296,6 +296,20 @@ export function executeMockQuery(data: any[], query: string): any[] {
 
       result = result.filter((row) => {
         return conditions.every((condition) => {
+          // Handle IS NOT NULL
+          const isNotNullMatch = condition.match(/(\w+)\s+IS\s+NOT\s+NULL/i);
+          if (isNotNullMatch) {
+            const field = isNotNullMatch[1];
+            return row[field] !== null && row[field] !== undefined;
+          }
+
+          // Handle IS NULL
+          const isNullMatch = condition.match(/(\w+)\s+IS\s+NULL/i);
+          if (isNullMatch) {
+            const field = isNullMatch[1];
+            return row[field] === null || row[field] === undefined;
+          }
+
           // Handle CAST(field AS DATE) comparisons
           const castMatch = condition.match(
             /CAST\s*\(\s*(\w+)\s+AS\s+DATE\s*\)\s*(>=|<=|>|<|=)\s*'([^']+)'/i
@@ -498,6 +512,34 @@ export function executeMockQuery(data: any[], query: string): any[] {
         }
         return 0;
       });
+    }
+
+    // Handle DISTINCT (must be after WHERE/ORDER BY, before LIMIT)
+    const distinctMatch = query.match(/SELECT\s+DISTINCT\s+(.+?)\s+FROM/i);
+    if (distinctMatch) {
+      const fields = distinctMatch[1].split(",").map((f) => f.trim());
+
+      // Create unique key for each row based on selected fields
+      const seen = new Set<string>();
+      result = result.filter((row) => {
+        const key = fields.map((field) => String(row[field] ?? "")).join("|||");
+        if (seen.has(key)) {
+          return false;
+        }
+        seen.add(key);
+        return true;
+      });
+
+      // If only selecting specific fields, project them
+      if (fields.length > 0 && fields[0] !== "*") {
+        result = result.map((row) => {
+          const projectedRow: any = {};
+          fields.forEach((field) => {
+            projectedRow[field] = row[field];
+          });
+          return projectedRow;
+        });
+      }
     }
 
     // Handle LIMIT
@@ -899,24 +941,6 @@ mockDataRouter.post(
       console.log(`🔍 Executing mock query: ${query}`);
       console.log(`📊 Mock data has ${data.length} rows`);
 
-      // Optimize for simple SELECT * LIMIT queries
-      const simpleLimitMatch = query.match(
-        /^\s*SELECT\s+\*\s+LIMIT\s+(\d+)\s*$/i
-      );
-      if (simpleLimitMatch) {
-        const limit = parseInt(simpleLimitMatch[1]);
-        const limitedRows = data.slice(0, limit);
-        console.log(
-          `✅ Optimized LIMIT query returned ${limitedRows.length} rows`
-        );
-
-        return res.json({
-          columns: mockData?.columns || [],
-          rows: limitedRows,
-          totalRows: data.length,
-        });
-      }
-
       // Execute query on mock data
       const result = executeMockQuery(data, query);
 
@@ -1069,24 +1093,6 @@ mockDataRouter.post(
 
       console.log(`🔍 Executing mock query: ${query}`);
       console.log(`📊 Mock data has ${data.length} rows`);
-
-      // Optimize for simple SELECT * LIMIT queries
-      const simpleLimitMatch = query.match(
-        /^\s*SELECT\s+\*\s+LIMIT\s+(\d+)\s*$/i
-      );
-      if (simpleLimitMatch) {
-        const limit = parseInt(simpleLimitMatch[1]);
-        const limitedRows = data.slice(0, limit);
-        console.log(
-          `✅ Optimized LIMIT query returned ${limitedRows.length} rows`
-        );
-
-        return res.json({
-          columns: mockData?.columns || [],
-          rows: limitedRows,
-          totalRows: data.length,
-        });
-      }
 
       // Execute query on mock data
       const result = executeMockQuery(data, query);
