@@ -114,8 +114,14 @@ export function DataSourceDialog({
     description: "",
     file: null as File | null,
     fileContent: "",
+    maxRows: undefined as number | undefined, // Limit rows to upload
   });
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<{
+    message: string;
+    suggestedMaxRows?: number;
+    currentRows?: number;
+  } | null>(null);
 
   useEffect(() => {
     if (editDataSourceId) {
@@ -362,6 +368,7 @@ export function DataSourceDialog({
       }
 
       setUploading(true);
+      setUploadError(null);
 
       const fileType = uploadForm.file.name.toLowerCase().endsWith(".sql")
         ? "sql"
@@ -372,6 +379,7 @@ export function DataSourceDialog({
         description: uploadForm.description,
         fileType,
         content: uploadForm.fileContent,
+        maxRows: uploadForm.maxRows, // Send maxRows to backend
       });
 
       toast.success("Mock data uploaded successfully");
@@ -382,13 +390,37 @@ export function DataSourceDialog({
         description: "",
         file: null,
         fileContent: "",
+        maxRows: undefined,
       });
+      setUploadError(null);
       setUploadModalOpen(false);
 
       // Refresh the list
       await loadMockDatasets();
     } catch (error: any) {
       console.error("Error uploading mock data:", error);
+
+      // Parse error to extract suggestion if available
+      try {
+        const errorMatch = error.message.match(/API Error \((\d+)\): (.+)/);
+        if (errorMatch) {
+          const errorBody = JSON.parse(errorMatch[2]);
+          if (errorBody.suggestedMaxRows) {
+            setUploadError({
+              message: errorBody.message || errorBody.error,
+              suggestedMaxRows: errorBody.suggestedMaxRows,
+              currentRows: errorBody.currentRows,
+            });
+            toast.error(
+              `File too large. Limit to ${errorBody.suggestedMaxRows} rows or less.`
+            );
+            return; // Don't close modal, let user adjust maxRows
+          }
+        }
+      } catch (parseError) {
+        // If parsing fails, show original error
+      }
+
       toast.error(error.message || "Failed to upload mock data");
     } finally {
       setUploading(false);
@@ -401,7 +433,7 @@ export function DataSourceDialog({
     // Load preview of mock data
     try {
       setLoadingPreview(true);
-      const result = await previewMockData(tenantId, mockDataId, 10);
+      const result = await previewMockData(tenantId, mockDataId, 100);
       setPreviewData(result.rows);
       setPreviewColumns(result.columns);
 
@@ -1417,6 +1449,88 @@ export function DataSourceDialog({
               )}
             </div>
 
+            {/* Maximum Rows */}
+            <div>
+              <Label htmlFor="upload-max-rows">Maximum Rows</Label>
+              <Select
+                value={uploadForm.maxRows?.toString() || "all"}
+                onValueChange={(value) =>
+                  setUploadForm({
+                    ...uploadForm,
+                    maxRows: value === "all" ? undefined : parseInt(value),
+                  })
+                }
+              >
+                <SelectTrigger id="upload-max-rows">
+                  <SelectValue placeholder="Select maximum rows" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Rows</SelectItem>
+                  <SelectItem value="100">100 rows</SelectItem>
+                  <SelectItem value="300">300 rows</SelectItem>
+                  <SelectItem value="500">500 rows</SelectItem>
+                  <SelectItem value="1000">1,000 rows</SelectItem>
+                  <SelectItem value="2000">2,000 rows</SelectItem>
+                  <SelectItem value="3000">3,000 rows</SelectItem>
+                  <SelectItem value="5000">5,000 rows</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500 mt-1">
+                Limit the number of rows to import. Useful for large files that
+                exceed Firestore&apos;s 1MB limit.
+              </p>
+            </div>
+
+            {/* Error Display with Suggestions */}
+            {uploadError && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5 shrink-0" />
+                  <div className="flex-1">
+                    <h4 className="text-sm font-semibold text-red-900">
+                      File Too Large
+                    </h4>
+                    <p className="text-sm text-red-700 mt-1">
+                      {uploadError.message}
+                    </p>
+                    {uploadError.suggestedMaxRows &&
+                      uploadError.currentRows && (
+                        <div className="mt-3 space-y-2">
+                          <p className="text-xs text-red-600">
+                            Current: {uploadError.currentRows} rows
+                            {" • "}
+                            Suggested: {uploadError.suggestedMaxRows} rows
+                          </p>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-red-300 text-red-700 hover:bg-red-100"
+                            onClick={() => {
+                              // Find the closest predefined value that's <= suggestedMaxRows
+                              const predefinedValues = [
+                                100, 300, 500, 1000, 2000, 3000, 5000,
+                              ];
+                              const suggested = uploadError.suggestedMaxRows!;
+                              const closestValue =
+                                predefinedValues
+                                  .filter((v) => v <= suggested)
+                                  .sort((a, b) => b - a)[0] || 100;
+
+                              setUploadForm({
+                                ...uploadForm,
+                                maxRows: closestValue,
+                              });
+                            }}
+                          >
+                            Use suggested limit
+                          </Button>
+                        </div>
+                      )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* File Preview */}
             {uploadForm.fileContent && (
               <div>
@@ -1441,7 +1555,9 @@ export function DataSourceDialog({
                   description: "",
                   file: null,
                   fileContent: "",
+                  maxRows: undefined,
                 });
+                setUploadError(null);
               }}
               disabled={uploading}
             >

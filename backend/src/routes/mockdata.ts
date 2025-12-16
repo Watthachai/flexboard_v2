@@ -21,6 +21,7 @@ const ImportMockDataSchema = z.object({
   data: z.string(), // JSON string or SQL statements
   tableName: z.string().optional(),
   description: z.string().optional(),
+  maxRows: z.number().optional(), // Limit number of rows to import
 });
 
 const QueryMockDataSchema = z.object({
@@ -43,52 +44,65 @@ function parseSQLInserts(sql: string): {
   const createTableMatch = sql.match(
     /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:\[?\w+\]?\.)?\[?(\w+)\]?/i
   );
-  const insertMatch = sql.match(/INSERT\s+INTO\s+(?:\[?\w+\]?\.)?\[?(\w+)\]?/i);
+  const insertMatch = sql.match(
+    /INSERT\s+(?:INTO\s+)?(?:\[?\w+\]?\.)?\[?(\w+)\]?/i
+  );
   const tableName =
     createTableMatch?.[1] || insertMatch?.[1] || "unknown_table";
 
-  // Extract column names
-  const columnsMatch = sql.match(/\(([^)]+)\)\s+VALUES/i);
+  // Extract column names from INSERT statement
+  const columnsMatch = sql.match(/INSERT[^(]*\(([^)]+)\)\s*VALUES/is);
   let columns: string[] = [];
   if (columnsMatch) {
-    columns = columnsMatch[1]
-      .split(",")
-      .map((col) => col.trim().replace(/`/g, "").replace(/\[|\]/g, "")); // Remove both ` and [] (SQL Server brackets)
-  }
-
-  // Extract all values from VALUES clause
-  // Match everything after VALUES keyword
-  const valuesSection = sql.match(/VALUES\s+([\s\S]+)/i);
-  if (!valuesSection) {
-    return { tableName, columns, data: [] };
+    columns = columnsMatch[1].split(",").map(
+      (col) =>
+        col
+          .trim()
+          .replace(/\[|\]/g, "") // Remove SQL Server brackets
+          .replace(/`/g, "") // Remove backticks
+          .replace(/\s+/g, " ") // Normalize whitespace
+    );
   }
 
   const data: any[] = [];
 
-  // Split by "),(" to handle multi-row inserts
-  // First, clean up the values section
-  let valuesStr = valuesSection[1].trim();
+  // Detect format: Check if it's multi-row INSERT or single-row per INSERT
+  const multiRowPattern = /VALUES\s*\([^)]+\)\s*,\s*\(/i;
+  const isMultiRow = multiRowPattern.test(sql);
 
-  // Remove trailing semicolon if exists
-  valuesStr = valuesStr.replace(/;?\s*$/, "");
+  if (isMultiRow) {
+    // Format 1: Multi-row INSERT - VALUES (...), (...), (...)
+    console.log("📊 Detected multi-row INSERT format");
 
-  // Match all value groups (including nested parentheses)
-  // This regex captures content between outer parentheses
-  const valueGroupRegex = /\(([^()]*(?:\([^)]*\)[^()]*)*)\)/g;
-  let match;
+    const valuesMatch = sql.match(/VALUES\s+([\s\S]+?)(?:;|\s*$)/i);
+    if (!valuesMatch) {
+      return { tableName, columns, data: [] };
+    }
 
-  while ((match = valueGroupRegex.exec(valuesStr)) !== null) {
-    const values = match[1];
-    const row: any = {};
+    let valuesStr = valuesMatch[1].trim();
+    valuesStr = valuesStr.replace(/;?\s*$/, "");
 
-    // Parse values (handles strings, numbers, NULL)
-    const valueMatches = values.match(
-      /('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|-?\d+\.?\d*|NULL)/gi
-    );
+    // Simple approach: split by "),(" for basic multi-row inserts
+    const valueGroups = valuesStr.split(/\)\s*,\s*\(/);
 
-    if (valueMatches && columns.length > 0) {
-      valueMatches.forEach((val, idx) => {
-        if (idx < columns.length) {
+    valueGroups.forEach((group, idx) => {
+      // Clean up: remove leading/trailing parentheses
+      let cleanGroup = group.trim();
+      if (idx === 0) cleanGroup = cleanGroup.replace(/^\(/, "");
+      if (idx === valueGroups.length - 1)
+        cleanGroup = cleanGroup.replace(/\)$/, "");
+
+      const row: any = {};
+
+      // Simple value parsing for basic format
+      const valueMatches = cleanGroup.match(
+        /('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|-?\d+\.?\d*|NULL)/gi
+      );
+
+      if (valueMatches && columns.length > 0) {
+        valueMatches.forEach((val, colIdx) => {
+          if (colIdx >= columns.length) return;
+
           let parsedValue: any = val.trim();
 
           if (parsedValue.toUpperCase() === "NULL") {
@@ -97,17 +111,159 @@ function parseSQLInserts(sql: string): {
             parsedValue.startsWith("'") ||
             parsedValue.startsWith('"')
           ) {
-            parsedValue = parsedValue.slice(1, -1); // Remove quotes
+            parsedValue = parsedValue.slice(1, -1);
+            parsedValue = parsedValue
+              .replace(/\\'/g, "'")
+              .replace(/\\"/g, '"')
+              .replace(/\\n/g, "\n")
+              .replace(/\\r/g, "\r")
+              .replace(/\\t/g, "\t")
+              .replace(/\\\\/g, "\\");
           } else if (!isNaN(Number(parsedValue))) {
             parsedValue = Number(parsedValue);
           }
 
-          row[columns[idx]] = parsedValue;
+          row[columns[colIdx]] = parsedValue;
+        });
+
+        if (Object.keys(row).length > 0) {
+          data.push(row);
         }
+      }
+    });
+  } else {
+    // Format 2: Single-row per INSERT (SQL Server style)
+    console.log("📊 Detected single-row per INSERT format");
+
+    // Split into individual INSERT statements
+    const insertStatements = sql
+      .split(/INSERT\s+(?:INTO\s+)?/i)
+      .filter((s) => s.includes("VALUES"));
+
+    for (const statement of insertStatements) {
+      // Extract VALUES section - handle multiline with CAST
+      const valuesMatch = statement.match(
+        /VALUES\s*\(([\s\S]+?)\)(?:\s*(?:INSERT|GO|$))/i
+      );
+      if (!valuesMatch) continue;
+
+      const valuesContent = valuesMatch[1];
+      const row: any = {};
+
+      // Parse each value - handle CAST, N-prefixed strings, numbers, NULL
+      let currentValue = "";
+      let inString = false;
+      let stringChar = "";
+      let parenDepth = 0;
+      const values: string[] = [];
+
+      for (let i = 0; i < valuesContent.length; i++) {
+        const char = valuesContent[i];
+
+        // Handle string literals
+        if ((char === "'" || char === '"') && valuesContent[i - 1] !== "\\") {
+          if (!inString) {
+            inString = true;
+            stringChar = char;
+            currentValue += char;
+          } else if (char === stringChar) {
+            inString = false;
+            currentValue += char;
+          } else {
+            currentValue += char;
+          }
+          continue;
+        }
+
+        if (inString) {
+          currentValue += char;
+          continue;
+        }
+
+        // Track parentheses depth (for CAST functions)
+        if (char === "(") {
+          parenDepth++;
+          currentValue += char;
+          continue;
+        }
+        if (char === ")") {
+          parenDepth--;
+          currentValue += char;
+          continue;
+        }
+
+        // Split on comma at depth 0
+        if (char === "," && parenDepth === 0) {
+          values.push(currentValue.trim());
+          currentValue = "";
+          continue;
+        }
+
+        currentValue += char;
+      }
+
+      // Add last value
+      if (currentValue.trim()) {
+        values.push(currentValue.trim());
+      }
+
+      // Parse each value
+      values.forEach((val, idx) => {
+        if (idx >= columns.length) return;
+
+        let parsedValue: any = val.trim();
+
+        // Handle NULL
+        if (/^NULL$/i.test(parsedValue)) {
+          row[columns[idx]] = null;
+          return;
+        }
+
+        // Handle CAST(...)
+        const castMatch = parsedValue.match(
+          /CAST\s*\(\s*(.+?)\s+AS\s+.+?\)$/is
+        );
+        if (castMatch) {
+          parsedValue = castMatch[1].trim();
+        }
+
+        // Remove N prefix for NVARCHAR strings
+        parsedValue = parsedValue.replace(/^N'/i, "'");
+
+        // Handle quoted strings
+        if (
+          (parsedValue.startsWith("'") && parsedValue.endsWith("'")) ||
+          (parsedValue.startsWith('"') && parsedValue.endsWith('"'))
+        ) {
+          parsedValue = parsedValue.slice(1, -1);
+          // Unescape
+          parsedValue = parsedValue
+            .replace(/\\'/g, "'")
+            .replace(/\\"/g, '"')
+            .replace(/\\n/g, "\n")
+            .replace(/\\r/g, "\r")
+            .replace(/\\t/g, "\t")
+            .replace(/\\\\/g, "\\");
+          row[columns[idx]] = parsedValue;
+          return;
+        }
+
+        // Handle numbers
+        const num = parseFloat(parsedValue);
+        if (!isNaN(num) && parsedValue.match(/^-?\d+\.?\d*$/)) {
+          row[columns[idx]] = num;
+          return;
+        }
+
+        // Default: keep as string
+        row[columns[idx]] = parsedValue;
       });
 
       // Only add row if it has data
-      if (Object.keys(row).length > 0) {
+      if (
+        Object.keys(row).length > 0 &&
+        Object.keys(row).length === columns.length
+      ) {
         data.push(row);
       }
     }
@@ -373,7 +529,7 @@ mockDataRouter.post(
   async (req: any, res: any) => {
     try {
       const { tenantId } = req.params;
-      const { format, data, tableName, description } = req.body;
+      const { format, data, tableName, description, maxRows } = req.body;
       const user = req.user;
 
       // Verify user has access (Super Admin can access any tenant)
@@ -387,11 +543,20 @@ mockDataRouter.post(
         // Parse SQL
         console.log("🔍 Parsing SQL data...");
         const parsed = parseSQLInserts(data);
+
+        // Apply maxRows limit if specified
+        const limitedData = maxRows
+          ? parsed.data.slice(0, maxRows)
+          : parsed.data;
+        const totalRows = parsed.data.length;
+
         parsedData = {
           tableName: tableName || parsed.tableName,
           columns: parsed.columns,
-          data: parsed.data,
-          rowCount: parsed.data.length,
+          data: limitedData,
+          rowCount: limitedData.length,
+          totalRowsInSource: totalRows,
+          isLimited: Boolean(maxRows && totalRows > maxRows),
         };
       } else if (format === "json") {
         // Parse JSON
@@ -401,24 +566,56 @@ mockDataRouter.post(
         // Support both array and object with metadata
         if (Array.isArray(jsonData)) {
           const columns = jsonData.length > 0 ? Object.keys(jsonData[0]) : [];
+          const limitedData = maxRows ? jsonData.slice(0, maxRows) : jsonData;
+          const totalRows = jsonData.length;
+
           parsedData = {
             tableName: tableName || "data",
             columns: columns,
-            data: jsonData,
-            rowCount: jsonData.length,
+            data: limitedData,
+            rowCount: limitedData.length,
+            totalRowsInSource: totalRows,
+            isLimited: Boolean(maxRows && totalRows > maxRows),
           };
         } else if (jsonData.data && Array.isArray(jsonData.data)) {
+          const limitedData = maxRows
+            ? jsonData.data.slice(0, maxRows)
+            : jsonData.data;
+          const totalRows = jsonData.data.length;
+
           parsedData = {
             tableName: tableName || jsonData.tableName || "data",
             columns: jsonData.columns || Object.keys(jsonData.data[0] || {}),
-            data: jsonData.data,
-            rowCount: jsonData.data.length,
+            data: limitedData,
+            rowCount: limitedData.length,
+            totalRowsInSource: totalRows,
+            isLimited: Boolean(maxRows && totalRows > maxRows),
           };
         } else {
           return res.status(400).json({
             error: "Invalid JSON format. Expected array or {data: []}",
           });
         }
+      }
+
+      // Check document size (Firestore limit: 1MB)
+      const docSize = JSON.stringify(parsedData).length;
+      const maxSize = 1048576; // 1MB in bytes
+
+      if (docSize > maxSize) {
+        // Calculate suggested rows based on average bytes per row
+        const avgBytesPerRow = docSize / parsedData.rowCount;
+        const estimatedRowsForLimit = Math.floor(maxSize / avgBytesPerRow);
+
+        return res.status(413).json({
+          error: "Document size exceeds Firestore limit (1MB)",
+          currentSize: docSize,
+          maxSize: maxSize,
+          currentRows: parsedData.rowCount,
+          totalRows: parsedData.totalRowsInSource,
+          suggestedMaxRows: estimatedRowsForLimit,
+          message: `Try limiting to approximately ${estimatedRowsForLimit} rows or less`,
+        });
       }
 
       // Store mock data at tenant level
@@ -434,14 +631,19 @@ mockDataRouter.post(
         updatedBy: user.uid,
       });
 
+      const limitMsg = parsedData.isLimited
+        ? ` (limited from ${parsedData.totalRowsInSource} total rows)`
+        : "";
+
       console.log(
-        `✅ Mock data uploaded: ${parsedData.rowCount} rows for table "${parsedData.tableName}"`
+        `✅ Mock data uploaded: ${parsedData.rowCount} rows for table "${parsedData.tableName}"${limitMsg}`
       );
 
       res.status(201).json({
         id: mockDataRef.id,
         ...parsedData,
-        message: `Successfully uploaded ${parsedData.rowCount} rows`,
+        message: `Successfully uploaded ${parsedData.rowCount} rows${limitMsg}`,
+        documentSize: JSON.stringify(parsedData).length,
       });
     } catch (error: any) {
       console.error("❌ Error uploading mock data:", error);
@@ -458,7 +660,7 @@ mockDataRouter.post(
   async (req: any, res: any) => {
     try {
       const { tenantId, dataSourceId } = req.params;
-      const { format, data, tableName, description } = req.body;
+      const { format, data, tableName, description, maxRows } = req.body;
       const user = req.user;
 
       // Verify user has access (Super Admin can access any tenant)
@@ -481,11 +683,20 @@ mockDataRouter.post(
         // Parse SQL
         console.log("🔍 Parsing SQL data...");
         const parsed = parseSQLInserts(data);
+
+        // Apply maxRows limit if specified
+        const limitedData = maxRows
+          ? parsed.data.slice(0, maxRows)
+          : parsed.data;
+        const totalRows = parsed.data.length;
+
         parsedData = {
           tableName: tableName || parsed.tableName,
           columns: parsed.columns,
-          data: parsed.data,
-          rowCount: parsed.data.length,
+          data: limitedData,
+          rowCount: limitedData.length,
+          totalRowsInSource: totalRows,
+          isLimited: Boolean(maxRows && totalRows > maxRows),
         };
       } else if (format === "json") {
         // Parse JSON
@@ -495,24 +706,56 @@ mockDataRouter.post(
         // Support both array and object with metadata
         if (Array.isArray(jsonData)) {
           const columns = jsonData.length > 0 ? Object.keys(jsonData[0]) : [];
+          const limitedData = maxRows ? jsonData.slice(0, maxRows) : jsonData;
+          const totalRows = jsonData.length;
+
           parsedData = {
             tableName: tableName || "imported_data",
             columns,
-            data: jsonData,
-            rowCount: jsonData.length,
+            data: limitedData,
+            rowCount: limitedData.length,
+            totalRowsInSource: totalRows,
+            isLimited: Boolean(maxRows && totalRows > maxRows),
           };
         } else if (jsonData.data && Array.isArray(jsonData.data)) {
+          const limitedData = maxRows
+            ? jsonData.data.slice(0, maxRows)
+            : jsonData.data;
+          const totalRows = jsonData.data.length;
+
           parsedData = {
             tableName: tableName || jsonData.tableName || "imported_data",
             columns: jsonData.columns || Object.keys(jsonData.data[0] || {}),
-            data: jsonData.data,
-            rowCount: jsonData.data.length,
+            data: limitedData,
+            rowCount: limitedData.length,
+            totalRowsInSource: totalRows,
+            isLimited: Boolean(maxRows && totalRows > maxRows),
           };
         } else {
           return res.status(400).json({
             error: "Invalid JSON format. Expected array or {data: []}}",
           });
         }
+      }
+
+      // Check document size (Firestore limit: 1MB)
+      const docSize = JSON.stringify(parsedData).length;
+      const maxSize = 1048576; // 1MB in bytes
+
+      if (docSize > maxSize) {
+        // Calculate suggested rows based on average bytes per row
+        const avgBytesPerRow = docSize / parsedData.rowCount;
+        const estimatedRowsForLimit = Math.floor(maxSize / avgBytesPerRow);
+
+        return res.status(413).json({
+          error: "Document size exceeds Firestore limit (1MB)",
+          currentSize: docSize,
+          maxSize: maxSize,
+          currentRows: parsedData.rowCount,
+          totalRows: parsedData.totalRowsInSource,
+          suggestedMaxRows: estimatedRowsForLimit,
+          message: `Try limiting to approximately ${estimatedRowsForLimit} rows or less`,
+        });
       }
 
       // Store mock data in Firestore
@@ -530,14 +773,19 @@ mockDataRouter.post(
         updatedBy: user.uid,
       });
 
+      const limitMsg = parsedData.isLimited
+        ? ` (limited from ${parsedData.totalRowsInSource} total rows)`
+        : "";
+
       console.log(
-        `✅ Mock data imported: ${parsedData.rowCount} rows for table "${parsedData.tableName}"`
+        `✅ Mock data imported: ${parsedData.rowCount} rows for table "${parsedData.tableName}"${limitMsg}`
       );
 
       res.status(201).json({
         id: mockDataRef.id,
         ...parsedData,
-        message: `Successfully imported ${parsedData.rowCount} rows`,
+        message: `Successfully imported ${parsedData.rowCount} rows${limitMsg}`,
+        documentSize: JSON.stringify(parsedData).length,
       });
     } catch (error: any) {
       console.error("❌ Error importing mock data:", error);
@@ -650,6 +898,24 @@ mockDataRouter.post(
 
       console.log(`🔍 Executing mock query: ${query}`);
       console.log(`📊 Mock data has ${data.length} rows`);
+
+      // Optimize for simple SELECT * LIMIT queries
+      const simpleLimitMatch = query.match(
+        /^\s*SELECT\s+\*\s+LIMIT\s+(\d+)\s*$/i
+      );
+      if (simpleLimitMatch) {
+        const limit = parseInt(simpleLimitMatch[1]);
+        const limitedRows = data.slice(0, limit);
+        console.log(
+          `✅ Optimized LIMIT query returned ${limitedRows.length} rows`
+        );
+
+        return res.json({
+          columns: mockData?.columns || [],
+          rows: limitedRows,
+          totalRows: data.length,
+        });
+      }
 
       // Execute query on mock data
       const result = executeMockQuery(data, query);
@@ -803,6 +1069,24 @@ mockDataRouter.post(
 
       console.log(`🔍 Executing mock query: ${query}`);
       console.log(`📊 Mock data has ${data.length} rows`);
+
+      // Optimize for simple SELECT * LIMIT queries
+      const simpleLimitMatch = query.match(
+        /^\s*SELECT\s+\*\s+LIMIT\s+(\d+)\s*$/i
+      );
+      if (simpleLimitMatch) {
+        const limit = parseInt(simpleLimitMatch[1]);
+        const limitedRows = data.slice(0, limit);
+        console.log(
+          `✅ Optimized LIMIT query returned ${limitedRows.length} rows`
+        );
+
+        return res.json({
+          columns: mockData?.columns || [],
+          rows: limitedRows,
+          totalRows: data.length,
+        });
+      }
 
       // Execute query on mock data
       const result = executeMockQuery(data, query);
