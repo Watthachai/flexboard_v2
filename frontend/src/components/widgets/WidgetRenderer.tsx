@@ -126,6 +126,26 @@ export default function WidgetRenderer({
                 }
               }
             });
+          } else if (widget.dataConfig.multiBar && widget.dataConfig.bars) {
+            // For multi-bar charts - add xField and all yFields from bars array
+            if (xField) {
+              if (!hasGroupBy || (groupBy && groupBy.includes(xField))) {
+                selectFields.push(xField);
+              }
+            }
+            // Add each bar's yField with its aggregation
+            widget.dataConfig.bars.forEach((bar: any) => {
+              if (bar.yField) {
+                const barAgg = bar.aggregation || aggregation;
+                if (barAgg && hasGroupBy) {
+                  selectFields.push(
+                    `${barAgg.toUpperCase()}(${bar.yField}) as ${bar.yField}`
+                  );
+                } else {
+                  selectFields.push(bar.yField);
+                }
+              }
+            });
           } else if (widget.dataConfig.seriesField) {
             // For seriesField multi-line charts - need xField, seriesField and yField
             const { seriesField } = widget.dataConfig;

@@ -252,7 +252,7 @@ export default function LineChartWidget({
       // Multiple lines from lines array
       return lines.map((line: LineConfig, index: number) => (
         <Line
-          key={line.id}
+          key={line.id || line.yField || `line-${index}`}
           type={lineType}
           dataKey={line.yField}
           name={line.label || line.yField}
