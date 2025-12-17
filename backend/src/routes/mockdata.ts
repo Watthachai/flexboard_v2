@@ -50,18 +50,26 @@ function parseSQLInserts(sql: string): {
   const tableName =
     createTableMatch?.[1] || insertMatch?.[1] || "unknown_table";
 
-  // Extract column names from INSERT statement
-  const columnsMatch = sql.match(/INSERT[^(]*\(([^)]+)\)\s*VALUES/is);
+  // Extract column names from INSERT statement - handle multi-line with comments
+  const columnsMatch = sql.match(/INSERT[^(]*\(([\s\S]+?)\)\s*VALUES/i);
   let columns: string[] = [];
   if (columnsMatch) {
-    columns = columnsMatch[1].split(",").map(
-      (col) =>
-        col
-          .trim()
-          .replace(/\[|\]/g, "") // Remove SQL Server brackets
-          .replace(/`/g, "") // Remove backticks
-          .replace(/\s+/g, " ") // Normalize whitespace
-    );
+    // Remove SQL comments from column list
+    let columnText = columnsMatch[1]
+      .replace(/--[^\n]*\n/g, "\n") // Remove single-line comments
+      .replace(/\/\*[\s\S]*?\*\//g, ""); // Remove multi-line comments
+
+    columns = columnText
+      .split(",")
+      .map(
+        (col) =>
+          col
+            .trim()
+            .replace(/\[|\]/g, "") // Remove SQL Server brackets
+            .replace(/`/g, "") // Remove backticks
+            .replace(/\s+/g, " ") // Normalize whitespace
+      )
+      .filter((c) => c.length > 0); // Remove empty strings
   }
 
   const data: any[] = [];
@@ -134,20 +142,47 @@ function parseSQLInserts(sql: string): {
   } else {
     // Format 2: Single-row per INSERT (SQL Server style)
     console.log("📊 Detected single-row per INSERT format");
+    console.log(
+      `📊 Expecting ${columns.length} columns: ${columns
+        .slice(0, 5)
+        .join(", ")}...`
+    );
 
     // Split into individual INSERT statements
     const insertStatements = sql
       .split(/INSERT\s+(?:INTO\s+)?/i)
       .filter((s) => s.includes("VALUES"));
 
-    for (const statement of insertStatements) {
-      // Extract VALUES section - handle multiline with CAST
-      const valuesMatch = statement.match(
-        /VALUES\s*\(([\s\S]+?)\)(?:\s*(?:INSERT|GO|$))/i
-      );
-      if (!valuesMatch) continue;
+    console.log(`📊 Found ${insertStatements.length} INSERT statements`);
 
-      const valuesContent = valuesMatch[1];
+    for (const statement of insertStatements) {
+      // Extract columns if not already found
+      if (columns.length === 0) {
+        const colMatch = statement.match(/\(([^)]+)\)\s*VALUES/i);
+        if (colMatch) {
+          let columnText = colMatch[1]
+            .replace(/--[^\n]*\n/g, "\n")
+            .replace(/\/\*[\s\S]*?\*\//g, "");
+          columns = columnText
+            .split(",")
+            .map((c) => c.trim().replace(/\[|\]/g, ""))
+            .filter((c) => c.length > 0);
+        }
+      }
+
+      // Extract VALUES section - match until semicolon or next INSERT/end
+      const valuesMatch = statement.match(/VALUES\s*\(([\s\S]+?)\);/i);
+      if (!valuesMatch) {
+        console.log("⚠️ No VALUES match in statement");
+        continue;
+      }
+
+      let valuesContent = valuesMatch[1].trim();
+
+      // Remove SQL comments from VALUES
+      valuesContent = valuesContent.replace(/--[^\n]*\n/g, "\n");
+
+      console.log(`📊 Parsing VALUES content (${valuesContent.length} chars)`);
       const row: any = {};
 
       // Parse each value - handle CAST, N-prefixed strings, numbers, NULL
@@ -207,6 +242,13 @@ function parseSQLInserts(sql: string): {
         values.push(currentValue.trim());
       }
 
+      console.log(
+        `📊 Split into ${values.length} values, first 3: ${values
+          .slice(0, 3)
+          .map((v) => v.substring(0, 20))
+          .join(", ")}`
+      );
+
       // Parse each value
       values.forEach((val, idx) => {
         if (idx >= columns.length) return;
@@ -260,11 +302,18 @@ function parseSQLInserts(sql: string): {
       });
 
       // Only add row if it has data
-      if (
-        Object.keys(row).length > 0 &&
-        Object.keys(row).length === columns.length
-      ) {
+      const rowKeys = Object.keys(row).length;
+      if (rowKeys > 0 && rowKeys === columns.length) {
         data.push(row);
+        if (data.length <= 5) {
+          console.log(`✅ Row ${data.length} added with ${rowKeys} values`);
+        }
+      } else if (rowKeys > 0) {
+        if (data.length < 5) {
+          console.log(
+            `⚠️ Row has ${rowKeys} values but expected ${columns.length} columns - skipping`
+          );
+        }
       }
     }
   }

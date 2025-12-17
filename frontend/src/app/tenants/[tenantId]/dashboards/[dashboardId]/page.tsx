@@ -561,7 +561,7 @@ export default function DashboardDetailPage() {
         </TabsList>
 
         {/* Design Tab */}
-        <TabsContent value="design" className="mt-6">
+        <div className={`mt-6 ${activeTab !== "design" ? "hidden" : ""}`}>
           <DesignTab
             dashboard={dashboard}
             tenantId={tenantId}
@@ -570,15 +570,15 @@ export default function DashboardDetailPage() {
             onVersionChange={handleVersionChange}
             onSwitchToSettings={() => setActiveTab("settings")}
           />
-        </TabsContent>
+        </div>
 
         {/* Versions Tab */}
-        <TabsContent value="versions" className="mt-6">
+        <div className={`mt-6 ${activeTab !== "versions" ? "hidden" : ""}`}>
           <VersionsTab versions={versions} />
-        </TabsContent>
+        </div>
 
         {/* Settings Tab */}
-        <TabsContent value="settings" className="mt-6">
+        <div className={`mt-6 ${activeTab !== "settings" ? "hidden" : ""}`}>
           <SettingsTab
             dashboard={dashboard}
             dataSources={dataSources}
@@ -588,12 +588,12 @@ export default function DashboardDetailPage() {
             onEditDataSource={handleEditDataSource}
             onSaveDataSource={handleSaveDataSource}
           />
-        </TabsContent>
+        </div>
 
         {/* Documentation Tab */}
-        <TabsContent value="docs" className="mt-6">
+        <div className={`mt-6 ${activeTab !== "docs" ? "hidden" : ""}`}>
           <DocumentationTab />
-        </TabsContent>
+        </div>
       </Tabs>
 
       {/* Data Source Dialog */}
