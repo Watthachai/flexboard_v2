@@ -497,6 +497,157 @@ const defaultColors = [
 
 ---
 
+## � Table Widget Features
+
+### Bulk Actions & Row Actions
+
+TableWidget รองรับ bulk actions (ทำงานกับหลายแถวพร้อมกัน) และ row actions (ทำงานกับแถวเดียว)
+
+#### Bulk Actions Configuration
+
+```json
+{
+  "type": "table",
+  "dataConfig": {
+    "table": "TRANSACTIONS",
+    "columns": [...]
+  },
+  "bulkActions": [
+    {
+      "id": "export-selected",
+      "label": "ส่งออกรายการที่เลือก",
+      "icon": "Download",
+      "variant": "default",
+      "confirmation": {
+        "title": "ยืนยันการส่งออกข้อมูล",
+        "message": "คุณต้องการส่งออกรายการที่เลือก {count} รายการใช่หรือไม่?"
+      },
+      "api": {
+        "endpoint": "/api/export-transactions",
+        "method": "POST",
+        "payload": {
+          "transactions": "${selectedRows}",
+          "format": "excel",
+          "timestamp": "${timestamp}"
+        }
+      }
+    },
+    {
+      "id": "delete-selected",
+      "label": "ลบรายการที่เลือก",
+      "icon": "Trash2",
+      "variant": "destructive",
+      "confirmation": {
+        "title": "ยืนยันการลบข้อมูล",
+        "message": "คุณต้องการลบรายการที่เลือก {count} รายการใช่หรือไม่?"
+      },
+      "api": {
+        "endpoint": "/api/delete-transactions",
+        "method": "DELETE",
+        "payload": {
+          "ids": "${selectedRows}"
+        }
+      }
+    }
+  ]
+}
+```
+
+#### Row Actions Configuration
+
+```json
+{
+  "type": "table",
+  "dataConfig": {
+    "table": "TRANSACTIONS",
+    "columns": [...]
+  },
+  "rowActions": [
+    {
+      "id": "view-detail",
+      "label": "ดูรายละเอียด",
+      "icon": "Eye",
+      "action": "navigate",
+      "target": "/transaction/${row.transactionId}"
+    },
+    {
+      "id": "edit",
+      "label": "แก้ไข",
+      "icon": "Edit",
+      "action": "navigate",
+      "target": "/transaction/${row.transactionId}/edit"
+    },
+    {
+      "id": "duplicate-order",
+      "label": "ทำรายการซ้ำ",
+      "icon": "Copy",
+      "action": "api",
+      "confirmation": {
+        "title": "ยืนยันการทำรายการซ้ำ",
+        "message": "คุณต้องการสร้างรายการใหม่จาก ${row.transactionId} ใช่หรือไม่?"
+      },
+      "api": {
+        "endpoint": "/api/duplicate-transaction",
+        "method": "POST",
+        "payload": {
+          "sourceTransaction": "${row.transactionId}",
+          "productId": "${row.productId}",
+          "quantity": "${row.quantity}"
+        }
+      }
+    },
+    {
+      "id": "delete",
+      "label": "ลบ",
+      "icon": "Trash2",
+      "variant": "destructive",
+      "action": "api",
+      "confirmation": {
+        "title": "ยืนยันการลบ",
+        "message": "คุณต้องการลบรายการ ${row.transactionId} ใช่หรือไม่?"
+      },
+      "api": {
+        "endpoint": "/api/delete-transaction/${row.transactionId}",
+        "method": "DELETE"
+      }
+    }
+  ]
+}
+```
+
+### Template Variables
+
+ใช้ template variables ใน payload และ URL:
+
+| Variable          | Description                      | Example                                        |
+| ----------------- | -------------------------------- | ---------------------------------------------- |
+| `${selectedRows}` | Array ของแถวที่เลือก (bulk only) | `[{id: 1, name: "..."}, {id: 2, name: "..."}]` |
+| `${row.field}`    | ค่าจาก field ของแถว              | `${row.transactionId}` → `"TXN-001"`           |
+| `${timestamp}`    | Unix timestamp ปัจจุบัน          | `1701234567890`                                |
+| `${dashboardId}`  | ID ของ dashboard ปัจจุบัน        | `"sales-dashboard-001"`                        |
+| `{count}`         | จำนวนแถวที่เลือก (text only)     | `"5"` (ใช้ใน confirmation message)             |
+
+### Action Types
+
+| Type       | Description                | Properties             |
+| ---------- | -------------------------- | ---------------------- |
+| `navigate` | เปิดหน้าใหม่               | `target` (URL pattern) |
+| `api`      | เรียก API endpoint         | `api` object           |
+| `custom`   | Custom JavaScript function | `handler` name         |
+
+### Features
+
+- ✅ Checkbox selection ทุกแถว
+- ✅ Select all / Deselect all
+- ✅ Bulk actions toolbar (แสดงเมื่อมีการเลือก)
+- ✅ Row actions dropdown menu (ปุ่ม ⋮ แต่ละแถว)
+- ✅ Confirmation dialogs
+- ✅ API integration with template variables
+- ✅ Toast notifications (success/error)
+- ✅ Loading states
+
+---
+
 ## 🔧 Technical Notes
 
 ### Files Modified for Multi-Line Support
@@ -507,6 +658,13 @@ const defaultColors = [
 | `frontend/src/components/widgets/WidgetRenderer.tsx`         | Added seriesField support in SQL query builder                                   |
 | `onprem-frontend/src/components/widgets/LineChartWidget.tsx` | Same as frontend                                                                 |
 | `onprem-frontend/src/components/widgets/WidgetRenderer.tsx`  | Same as frontend                                                                 |
+
+### Files Modified for TableWidget Features
+
+| File                                                     | Changes                                                                        |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `frontend/src/components/widgets/TableWidget.tsx`        | Added bulk actions, row actions, selection state, API integration (1677 lines) |
+| `onprem-frontend/src/components/widgets/TableWidget.tsx` | Synced with frontend version                                                   |
 
 ### SQL Query Generation Logic
 

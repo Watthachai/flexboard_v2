@@ -40,6 +40,34 @@ import { toast } from "sonner";
 // Changelog data
 const changelog = [
   {
+    version: "2.2.0",
+    date: "December 17, 2025",
+    type: "feature" as const,
+    changes: [
+      {
+        title: "Table Widget Bulk Actions",
+        description: "รองรับการทำงานกับหลาย rows พร้อมกัน",
+        details: [
+          "bulkActions array ใน dataConfig",
+          "Checkbox selection + Select all/Deselect all",
+          "Toolbar ปรากฏเมื่อเลือก rows",
+          "Confirmation dialog ก่อนทำงาน",
+          "Template variables: ${selectedRows}, {count}",
+        ],
+      },
+      {
+        title: "Table Widget Row Actions",
+        description: "รองรับการทำงานกับแต่ละ row",
+        details: [
+          "rowActions array ใน dataConfig",
+          "Dropdown menu (⋮) แต่ละ row",
+          "Action types: navigate, api, custom",
+          "Template variables: ${row.field}, ${dashboardId}, ${timestamp}",
+        ],
+      },
+    ],
+  },
+  {
     version: "2.1.0",
     date: "November 27, 2025",
     type: "feature" as const,
@@ -137,6 +165,8 @@ const widgetTypes = [
     icon: "📈",
     description: "แสดงแนวโน้มข้อมูลตามเวลา รองรับ multi-line",
     exampleKey: "multiLine",
+    isNew: true,
+    newFeature: "Multi-Line Support",
   },
   {
     type: "area",
@@ -207,8 +237,10 @@ const widgetTypes = [
     name: "Data Table",
     thai: "ตารางข้อมูล",
     icon: "📋",
-    description: "แสดงข้อมูลในรูปแบบตาราง",
+    description: "แสดงข้อมูลในรูปแบบตาราง รองรับ bulk actions และ row actions",
     exampleKey: "tableWidget",
+    isNew: true,
+    newFeature: "Bulk & Row Actions",
   },
 ];
 
@@ -471,7 +503,69 @@ const codeExamples = {
     "table": "PRODUCTS",
     "columns": ["productId", "productName", "category", "price", "stock"],
     "orderBy": [{ "field": "productName", "direction": "ASC" }],
-    "limit": 50
+    "limit": 50,
+    "bulkActions": [
+      {
+        "id": "export-selected",
+        "label": "📥 Export Selected",
+        "icon": "download",
+        "type": "api",
+        "endpoint": "/api/export/products",
+        "method": "POST",
+        "payload": {
+          "products": "\${selectedRows}",
+          "format": "csv",
+          "timestamp": "\${timestamp}"
+        },
+        "successMessage": "Exported {count} products successfully",
+        "confirmMessage": "Export {count} selected products?"
+      },
+      {
+        "id": "delete-products",
+        "label": "🗑️ Delete Selected",
+        "icon": "trash",
+        "type": "api",
+        "endpoint": "/api/products/bulk-delete",
+        "method": "DELETE",
+        "payload": {
+          "productIds": "\${selectedRows}",
+          "dashboardId": "\${dashboardId}"
+        },
+        "successMessage": "Deleted {count} products",
+        "confirmMessage": "Are you sure you want to delete {count} products? This action cannot be undone.",
+        "requireConfirm": true
+      }
+    ],
+    "rowActions": [
+      {
+        "id": "view-details",
+        "label": "👁️ View Details",
+        "icon": "eye",
+        "type": "navigate",
+        "url": "/products/\${row.productId}"
+      },
+      {
+        "id": "edit-product",
+        "label": "✏️ Edit",
+        "icon": "edit",
+        "type": "navigate",
+        "url": "/products/\${row.productId}/edit"
+      },
+      {
+        "id": "update-stock",
+        "label": "📦 Update Stock",
+        "icon": "package",
+        "type": "api",
+        "endpoint": "/api/products/\${row.productId}/stock",
+        "method": "PUT",
+        "payload": {
+          "productId": "\${row.productId}",
+          "currentStock": "\${row.stock}",
+          "timestamp": "\${timestamp}"
+        },
+        "successMessage": "Stock updated for \${row.productName}"
+      }
+    ]
   },
   "styleConfig": {
     "striped": true,
@@ -487,6 +581,72 @@ const codeExamples = {
     "query": "SELECT category, SUM(amount) as total FROM SALES WHERE status = 'completed' GROUP BY category ORDER BY total DESC LIMIT 5"
   }
 }`,
+  bulkActions: `"bulkActions": [
+  {
+    "id": "export-selected",
+    "label": "📥 Export Selected",
+    "icon": "download",
+    "type": "api",
+    "endpoint": "/api/export/data",
+    "method": "POST",
+    "payload": {
+      "data": "\${selectedRows}",
+      "format": "csv",
+      "timestamp": "\${timestamp}"
+    },
+    "successMessage": "Exported {count} items successfully",
+    "confirmMessage": "Export {count} selected items?",
+    "requireConfirm": true
+  },
+  {
+    "id": "bulk-delete",
+    "label": "🗑️ Delete Selected",
+    "icon": "trash",
+    "type": "api",
+    "endpoint": "/api/items/bulk-delete",
+    "method": "DELETE",
+    "payload": {
+      "items": "\${selectedRows}",
+      "dashboardId": "\${dashboardId}"
+    },
+    "successMessage": "Deleted {count} items",
+    "confirmMessage": "Delete {count} items? This cannot be undone.",
+    "requireConfirm": true
+  }
+]`,
+  rowActions: `"rowActions": [
+  {
+    "id": "view-details",
+    "label": "👁️ View Details",
+    "icon": "eye",
+    "type": "navigate",
+    "url": "/items/\${row.id}"
+  },
+  {
+    "id": "edit-item",
+    "label": "✏️ Edit",
+    "icon": "edit",
+    "type": "navigate",
+    "url": "/items/\${row.id}/edit"
+  },
+  {
+    "id": "api-action",
+    "label": "🔄 Process",
+    "icon": "refresh",
+    "type": "api",
+    "endpoint": "/api/items/\${row.id}/process",
+    "method": "POST",
+    "payload": {
+      "itemId": "\${row.id}",
+      "itemName": "\${row.name}",
+      "timestamp": "\${timestamp}",
+      "dashboardId": "\${dashboardId}"
+    },
+    "successMessage": "Processed \${row.name} successfully",
+    "confirmMessage": "Process item '\${row.name}'?",
+    "requireConfirm": true
+  }
+]`,
   unlimitedData: `{
   "id": "widget_unlimited_001",
   "title": "📋 All Records",
@@ -601,6 +761,29 @@ const troubleshootingItems = [
     solution: "ใช้ format YYYY-MM-DD สำหรับ defaultValue.start/end",
     category: "filter",
   },
+  {
+    problem: "Bulk actions ไม่ทำงาน",
+    solution:
+      "ตรวจสอบ bulkActions array ใน dataConfig, ต้องมี id, label, type, endpoint (ถ้าเป็น api)",
+    category: "table",
+  },
+  {
+    problem: "Row actions ไม่แสดง",
+    solution:
+      "ตรวจสอบ rowActions array ครบถ้วน, ต้องมี id, label, type, และ url หรือ endpoint",
+    category: "table",
+  },
+  {
+    problem: "Template variable ไม่ทำงาน",
+    solution:
+      "ใช้ ${selectedRows}, ${row.fieldName}, ${timestamp}, ${dashboardId} หรือ {count} ให้ถูกต้อง, ใส่ \\ escape ใน JSON string",
+    category: "table",
+  },
+  {
+    problem: "Confirmation dialog ไม่ปรากฏ",
+    solution: "ตรวจสอบว่ามี requireConfirm: true และ confirmMessage ใน action",
+    category: "table",
+  },
 ];
 
 // Collapsible section component
@@ -674,6 +857,8 @@ type WidgetType = {
   icon: string;
   description: string;
   exampleKey: string;
+  isNew?: boolean;
+  newFeature?: string;
 };
 
 export function DocumentationTab() {
@@ -691,11 +876,11 @@ export function DocumentationTab() {
           <div className="flex items-center justify-center gap-2 mt-4">
             <Badge variant="outline" className="flex items-center gap-1">
               <Calendar className="h-3 w-3" />
-              Last Updated: November 27, 2025
+              Last Updated: December 17, 2025
             </Badge>
             <Badge variant="outline" className="flex items-center gap-1">
               <GitBranch className="h-3 w-3" />
-              Version: 2.1.0
+              Version: 2.2.0
             </Badge>
           </div>
         </div>
@@ -815,20 +1000,32 @@ export function DocumentationTab() {
                     <div
                       key={widget.type}
                       onClick={() => setSelectedWidget(widget)}
-                      className="p-4 border rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-colors cursor-pointer group"
+                      className="p-4 border rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-colors cursor-pointer group relative"
                     >
+                      {widget.isNew && (
+                        <Badge className="absolute top-2 right-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-[10px] px-1.5 py-0.5">
+                          NEW
+                        </Badge>
+                      )}
                       <div className="flex items-center gap-3">
                         <span className="text-2xl group-hover:scale-110 transition-transform">
                           {widget.icon}
                         </span>
                         <div className="flex-1">
-                          <p className="font-semibold group-hover:text-blue-600">
-                            {widget.name}
-                          </p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold group-hover:text-blue-600">
+                              {widget.name}
+                            </p>
+                          </div>
                           <p className="text-sm text-gray-500">{widget.thai}</p>
                           <code className="text-xs bg-gray-100 px-1 rounded mt-1 inline-block">
                             type: &quot;{widget.type}&quot;
                           </code>
+                          {widget.isNew && widget.newFeature && (
+                            <p className="text-[10px] text-green-600 font-semibold mt-1">
+                              ✨ {widget.newFeature}
+                            </p>
+                          )}
                         </div>
                         <Eye className="h-4 w-4 text-gray-400 group-hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
                       </div>
