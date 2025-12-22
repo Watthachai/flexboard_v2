@@ -372,7 +372,7 @@ export default function WidgetRenderer({
       case "donut": // Alias for doughnut
         return <DoughnutChartWidget widget={widget} data={data} />;
       case "table":
-        return <TableWidget widget={widget} data={data} />;
+        return <TableWidget widget={widget} data={data} tenantId={tenantId} />;
       case "kpi":
         return <KPIWidget widget={widget} data={data} />;
       case "gauge":

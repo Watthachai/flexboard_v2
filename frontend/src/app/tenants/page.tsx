@@ -22,7 +22,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Edit2, Trash2, Loader2, Key } from "lucide-react";
+import { Plus, Edit2, Trash2, Loader2, Key, Settings } from "lucide-react";
 import { toast } from "sonner";
 import { ApiKeysModal } from "@/components/api-keys-modal";
 
@@ -297,6 +297,18 @@ export default function TenantsPage() {
                   >
                     <Key className="h-4 w-4 mr-1" />
                     API Keys
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      router.push(`/tenants/${tenant.id}/settings`);
+                    }}
+                    disabled={loading}
+                  >
+                    <Settings className="h-4 w-4 mr-1" />
+                    Settings
                   </Button>
                   <Button
                     size="sm"

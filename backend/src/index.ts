@@ -120,6 +120,7 @@ import columnsRouter from "./routes/columns.js";
 import adminUIRouter from "./routes/adminUIReact.js"; // ใช้ React version
 import { onpremRouter } from "./routes/onprem.js"; // OnPrem API routes
 import { apiKeysRouter } from "./routes/apiKeys.js"; // API Keys management
+import { apiTokensRouter } from "./routes/api-tokens.js"; // API Tokens management
 import aiAssistantRouter from "./routes/ai-assistant.js"; // AI Assistant routes
 import chatHistoryRouter from "./routes/chat-history.js"; // Chat History routes
 import { mockDataRouter } from "./routes/mockdata.js"; // Mock Data routes
@@ -208,6 +209,7 @@ app.use("/api/tenants", tenantsRouter); // Fixed: Use tenantsRouter instead of c
 app.use("/api/tenants", dashboardsRouter); // Dashboard routes
 app.use("/api/tenants", dataSourcesRouter); // Data source routes
 app.use("/api/tenants/:tenantId/api-keys", apiKeysRouter); // API Keys management
+app.use("/api/tenants/:tenantId/api-tokens", apiTokensRouter); // API Tokens management
 app.use("/api", aiAssistantRouter); // AI Assistant routes
 app.use("/api", chatHistoryRouter); // Chat History routes
 app.use("/api", columnsRouter); // Columns routes

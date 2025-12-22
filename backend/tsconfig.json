@@ -8,7 +8,7 @@
     
     /* Emit */
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": "src",
     "sourceMap": true,
     "removeComments": true,
     
