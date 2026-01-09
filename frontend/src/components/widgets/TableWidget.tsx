@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -93,9 +94,14 @@ interface ConfigFilter {
 interface TableWidgetProps {
   widget: any;
   data: { data: any[]; columns: string[] };
+  tenantId?: string;
 }
 
-export default function TableWidget({ widget, data }: TableWidgetProps) {
+export default function TableWidget({
+  widget,
+  data,
+  tenantId,
+}: TableWidgetProps) {
   const {
     title,
     styleConfig = {},
@@ -145,7 +151,61 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
   const [confirmAction, setConfirmAction] = useState<{
     action: any;
     rows: any[];
+    message?: string;
   } | null>(null);
+  const [apiTokens, setApiTokens] = useState<{ [key: string]: string }>({});
+  const { user } = useAuth();
+
+  // Fetch API tokens from tenant settings
+  useEffect(() => {
+    const fetchApiTokens = async () => {
+      if (!tenantId || !user) return;
+
+      try {
+        const authToken = await user.getIdToken();
+        const backendUrl =
+          process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
+        const response = await fetch(
+          `${backendUrl}/api/tenants/${tenantId}/api-tokens`,
+          {
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+            },
+          }
+        );
+
+        if (!response.ok) {
+          console.warn("Failed to fetch API tokens");
+          return;
+        }
+
+        const data = await response.json();
+        const tokens: { [key: string]: string } = {};
+
+        // Fetch each token value
+        for (const tokenName of data.tokens) {
+          const tokenResponse = await fetch(
+            `${backendUrl}/api/tenants/${tenantId}/api-tokens/${tokenName}`,
+            {
+              headers: {
+                Authorization: `Bearer ${authToken}`,
+              },
+            }
+          );
+          if (tokenResponse.ok) {
+            const tokenData = await tokenResponse.json();
+            tokens[tokenName] = tokenData.token;
+          }
+        }
+
+        setApiTokens(tokens);
+      } catch (error) {
+        console.error("Error fetching API tokens:", error);
+      }
+    };
+
+    fetchApiTokens();
+  }, [tenantId, user]);
 
   // Helper function to format cell values (especially dates)
   const formatCellValue = (value: any): string => {
@@ -807,7 +867,15 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
   };
 
   // Replace template variables in string
-  const replaceTemplateVars = (template: string, row: any, allRows?: any[]) => {
+  const replaceTemplateVars = async (
+    template: string,
+    row: any,
+    allRows?: any[]
+  ) => {
+    console.log("🔧 replaceTemplateVars input:", {
+      template,
+      hasApiTokens: Object.keys(apiTokens).length > 0,
+    });
     let result = template;
 
     // Replace ${row.field} with actual row values
@@ -818,6 +886,35 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
         return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
       }
       return value !== undefined ? String(value) : "";
+    });
+
+    // Replace ${TOKEN:name} with API token from tenant settings
+    result = result.replace(/\$\{TOKEN:([\w-]+)\}/g, (match, tokenName) => {
+      const token = apiTokens[tokenName] || "";
+      console.log("🔑 Token replacement:", {
+        match,
+        tokenName,
+        token: token ? `${token.substring(0, 8)}...` : "(empty)",
+        allTokens: Object.keys(apiTokens),
+      });
+      return token;
+    });
+
+    // Replace ${API_TOKEN} - try tenant settings first, then env variable
+    result = result.replace(/\$\{API_TOKEN\}/g, () => {
+      // Check if there's a default token in tenant settings
+      return (
+        apiTokens["default"] ||
+        apiTokens["fittbsa"] ||
+        process.env.NEXT_PUBLIC_API_TOKEN ||
+        ""
+      );
+    });
+
+    // Replace ${NEXT_PUBLIC_*} environment variables
+    result = result.replace(/\$\{(NEXT_PUBLIC_\w+)\}/g, (_, envVar) => {
+      const envValue = process.env[envVar];
+      return envValue || "";
     });
 
     // Replace ${appliedFilters} with current filter state
@@ -841,7 +938,11 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
   };
 
   // Build payload with proper template variable replacement
-  const buildPayload = (template: any, row: any, allRows: any[]): any => {
+  const buildPayload = async (
+    template: any,
+    row: any,
+    allRows: any[]
+  ): Promise<any> => {
     if (template === null || template === undefined) {
       return template;
     }
@@ -869,19 +970,21 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
       }
 
       // Otherwise, replace inline variables in string
-      return replaceTemplateVars(template, row, allRows);
+      return await replaceTemplateVars(template, row, allRows);
     }
 
     // Handle arrays
     if (Array.isArray(template)) {
-      return template.map((item) => buildPayload(item, row, allRows));
+      return await Promise.all(
+        template.map((item) => buildPayload(item, row, allRows))
+      );
     }
 
     // Handle objects
     if (typeof template === "object") {
       const result: any = {};
       for (const [key, value] of Object.entries(template)) {
-        result[key] = buildPayload(value, row, allRows);
+        result[key] = await buildPayload(value, row, allRows);
       }
       return result;
     }
@@ -901,7 +1004,12 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
 
     // Show confirmation dialog if configured
     if (action.confirmMessage) {
-      setConfirmAction({ action, rows: selectedData });
+      const message = await replaceTemplateVars(
+        action.confirmMessage,
+        {},
+        selectedData
+      );
+      setConfirmAction({ action, rows: selectedData, message });
       return;
     }
 
@@ -911,7 +1019,7 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
   // Execute row action
   const executeRowAction = async (action: any, row: any) => {
     if (action.type === "navigation") {
-      const url = replaceTemplateVars(action.url, row);
+      const url = await replaceTemplateVars(action.url, row);
       window.location.href = url;
       return;
     }
@@ -921,27 +1029,34 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
 
   // Perform API call
   const performApiCall = async (action: any, rows: any[]) => {
+    console.log("🚀 performApiCall called:", {
+      action: action.id,
+      rowCount: rows.length,
+    });
+
     try {
       const { apiConfig } = action;
 
       // Replace variables in URL
       let url = apiConfig.url;
       if (rows.length === 1) {
-        url = replaceTemplateVars(url, rows[0]);
+        url = await replaceTemplateVars(url, rows[0]);
       }
 
       // Replace variables in headers
       const headers: any = {};
       if (apiConfig.headers) {
-        Object.entries(apiConfig.headers).forEach(([key, value]) => {
-          headers[key] = replaceTemplateVars(String(value), {}, rows);
-        });
+        for (const [key, value] of Object.entries(apiConfig.headers)) {
+          headers[key] = await replaceTemplateVars(String(value), {}, rows);
+        }
       }
+
+      console.log("📤 API Request:", { url, headers, apiTokens });
 
       // Build payload from template with proper variable replacement
       let payload = {};
       if (apiConfig.payloadTemplate) {
-        payload = buildPayload(apiConfig.payloadTemplate, rows[0], rows);
+        payload = await buildPayload(apiConfig.payloadTemplate, rows[0], rows);
       }
 
       // Make API call
@@ -952,12 +1067,17 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
       });
 
       if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error("❌ API Response Error:", {
+          status: response.status,
+          errorData,
+        });
         throw new Error(`API error: ${response.statusText}`);
       }
 
       // Show success message
       const successMsg = action.successMessage
-        ? replaceTemplateVars(action.successMessage, {}, rows)
+        ? await replaceTemplateVars(action.successMessage, {}, rows)
         : `ดำเนินการสำเร็จ ${rows.length} รายการ`;
       toast.success(successMsg);
 
@@ -1649,12 +1769,7 @@ export default function TableWidget({ widget, data }: TableWidgetProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>ยืนยันการดำเนินการ</AlertDialogTitle>
             <AlertDialogDescription>
-              {confirmAction &&
-                replaceTemplateVars(
-                  confirmAction.action.confirmMessage,
-                  {},
-                  confirmAction.rows
-                )}
+              {confirmAction?.message}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

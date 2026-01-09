@@ -522,7 +522,7 @@ dataSourcesRouter.post(
 
       // Get columns from database using the connector
       const { getDatabaseConnector } = await import(
-        "../utils/database-connectors"
+        "../utils/database-connectors.js"
       );
       const connector = getDatabaseConnector(type, connection);
       const columns = await connector.getColumns(table);
