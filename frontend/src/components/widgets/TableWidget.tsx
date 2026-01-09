@@ -156,6 +156,14 @@ export default function TableWidget({
   const [apiTokens, setApiTokens] = useState<{ [key: string]: string }>({});
   const { user } = useAuth();
 
+  // Progress tracking for parallel API calls
+  const [bulkProgress, setBulkProgress] = useState<{
+    total: number;
+    completed: number;
+    failed: number;
+    isProcessing: boolean;
+  } | null>(null);
+
   // Fetch API tokens from tenant settings
   useEffect(() => {
     const fetchApiTokens = async () => {
@@ -1013,7 +1021,8 @@ export default function TableWidget({
       return;
     }
 
-    await performApiCall(action, selectedData);
+    // Use parallel API calls for bulk actions (1 row = 1 document)
+    await performParallelApiCalls(action, selectedData);
   };
 
   // Execute row action
@@ -1027,7 +1036,7 @@ export default function TableWidget({
     await performApiCall(action, [row]);
   };
 
-  // Perform API call
+  // Perform API call (for single row or bulk as one request)
   const performApiCall = async (action: any, rows: any[]) => {
     console.log("🚀 performApiCall called:", {
       action: action.id,
@@ -1091,6 +1100,107 @@ export default function TableWidget({
       toast.error(errorMsg);
     } finally {
       setConfirmAction(null);
+    }
+  };
+
+  // Perform API calls in parallel (1 row = 1 call)
+  const performParallelApiCalls = async (action: any, rows: any[]) => {
+    try {
+      const { apiConfig } = action;
+
+      // Initialize progress
+      setBulkProgress({
+        total: rows.length,
+        completed: 0,
+        failed: 0,
+        isProcessing: true,
+      });
+
+      let completed = 0;
+      let failed = 0;
+
+      // Create array of API call promises
+      const apiCalls = rows.map(async (row) => {
+        try {
+          // Replace variables in URL
+          const url = await replaceTemplateVars(apiConfig.url, row);
+
+          // Replace variables in headers
+          const headers: any = {};
+          if (apiConfig.headers) {
+            for (const [key, value] of Object.entries(apiConfig.headers)) {
+              headers[key] = await replaceTemplateVars(String(value), row, [
+                row,
+              ]);
+            }
+          }
+
+          // Build payload for single row
+          let payload = {};
+          if (apiConfig.payloadTemplate) {
+            payload = await buildPayload(apiConfig.payloadTemplate, row, [row]);
+          }
+
+          // Make API call
+          const response = await fetch(url, {
+            method: apiConfig.method || "POST",
+            headers,
+            body: JSON.stringify(payload),
+          });
+
+          if (!response.ok) {
+            throw new Error(`API error: ${response.statusText}`);
+          }
+
+          completed++;
+          setBulkProgress((prev) =>
+            prev ? { ...prev, completed: completed } : null
+          );
+
+          return { success: true, row };
+        } catch (error) {
+          failed++;
+          setBulkProgress((prev) =>
+            prev ? { ...prev, failed: failed } : null
+          );
+          console.error("API call failed for row:", row, error);
+          return { success: false, row, error };
+        }
+      });
+
+      // Execute all API calls in parallel
+      const results = await Promise.all(apiCalls);
+
+      // Show summary
+      const successCount = results.filter((r) => r.success).length;
+      const failedCount = results.filter((r) => !r.success).length;
+
+      if (successCount > 0) {
+        const successMsg = action.successMessage
+          ? action.successMessage.replace("{count}", String(successCount))
+          : `สำเร็จ ${successCount} รายการ`;
+        toast.success(
+          successMsg +
+            (failedCount > 0 ? ` (ล้มเหลว ${failedCount} รายการ)` : "")
+        );
+      }
+
+      if (failedCount > 0 && successCount === 0) {
+        const errorMsg = action.errorMessage || "เกิดข้อผิดพลาดในการดำเนินการ";
+        toast.error(errorMsg);
+      }
+
+      // Clear selection after completion
+      setSelectedRows(new Set());
+    } catch (error) {
+      console.error("Parallel API calls failed:", error);
+      toast.error("เกิดข้อผิดพลาดในการดำเนินการ");
+    } finally {
+      // Reset progress after 2 seconds
+      setTimeout(() => {
+        setBulkProgress(null);
+        setConfirmAction(null);
+      }, 2000);
     }
   };
 
@@ -1772,12 +1882,49 @@ export default function TableWidget({
               {confirmAction?.message}
             </AlertDialogDescription>
           </AlertDialogHeader>
+
+          {/* Progress Bar */}
+          {bulkProgress && bulkProgress.isProcessing && (
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>กำลังดำเนินการ...</span>
+                <span>
+                  {bulkProgress.completed + bulkProgress.failed} /{" "}
+                  {bulkProgress.total}
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2.5">
+                <div
+                  className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                  style={{
+                    width: `${
+                      ((bulkProgress.completed + bulkProgress.failed) /
+                        bulkProgress.total) *
+                      100
+                    }%`,
+                  }}
+                ></div>
+              </div>
+              {bulkProgress.failed > 0 && (
+                <p className="text-sm text-red-600">
+                  ล้มเหลว: {bulkProgress.failed} รายการ
+                </p>
+              )}
+            </div>
+          )}
+
           <AlertDialogFooter>
-            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+            <AlertDialogCancel disabled={bulkProgress?.isProcessing}>
+              ยกเลิก
+            </AlertDialogCancel>
             <AlertDialogAction
+              disabled={bulkProgress?.isProcessing}
               onClick={() => {
                 if (confirmAction) {
-                  performApiCall(confirmAction.action, confirmAction.rows);
+                  performParallelApiCalls(
+                    confirmAction.action,
+                    confirmAction.rows
+                  );
                 }
               }}
             >

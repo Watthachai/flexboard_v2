@@ -155,19 +155,40 @@ export default function TableWidget({
   const [apiTokens, setApiTokens] = useState<{ [key: string]: string }>({});
 
   // Fetch API tokens from tenant settings
+  // Note: API tokens are stored in Cloud Backend, uses OnPrem API with API Key auth
   useEffect(() => {
     const fetchApiTokens = async () => {
       if (!tenantId) return;
 
       try {
-        const backendUrl =
-          process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
+        // Get API Key from localStorage
+        const apiKey =
+          typeof window !== "undefined" ? localStorage.getItem("apiKey") : null;
+
+        if (!apiKey) {
+          console.warn("No API key found, skipping API tokens fetch");
+          return;
+        }
+
+        // Use Cloud Backend URL with OnPrem API endpoint (uses API Key auth)
+        const cloudBackendUrl =
+          process.env.NEXT_PUBLIC_CLOUD_BACKEND_URL ||
+          "https://api.fittflexb.com";
+
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          "X-API-Key": apiKey,
+          "X-Tenant-ID": tenantId,
+        };
+
+        // Use OnPrem endpoint that accepts API Key auth
         const response = await fetch(
-          `${backendUrl}/api/tenants/${tenantId}/api-tokens`
+          `${cloudBackendUrl}/api/onprem/api-tokens`,
+          { headers }
         );
 
         if (!response.ok) {
-          console.warn("Failed to fetch API tokens");
+          console.warn("Failed to fetch API tokens:", response.status);
           return;
         }
 
@@ -177,7 +198,8 @@ export default function TableWidget({
         // Fetch each token value
         for (const tokenName of data.tokens) {
           const tokenResponse = await fetch(
-            `${backendUrl}/api/tenants/${tenantId}/api-tokens/${tokenName}`
+            `${cloudBackendUrl}/api/onprem/api-tokens/${tokenName}`,
+            { headers }
           );
           if (tokenResponse.ok) {
             const tokenData = await tokenResponse.json();
@@ -185,6 +207,7 @@ export default function TableWidget({
           }
         }
 
+        console.log("📦 API tokens loaded:", Object.keys(tokens));
         setApiTokens(tokens);
       } catch (error) {
         console.error("Error fetching API tokens:", error);
