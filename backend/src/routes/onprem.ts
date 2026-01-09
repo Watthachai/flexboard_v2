@@ -399,4 +399,80 @@ onpremRouter.post(
   }
 );
 
+// ===== API Tokens for OnPrem =====
+import crypto from "crypto";
+
+// Encryption key - should be in environment variable
+const ENCRYPTION_KEY =
+  process.env.API_TOKEN_ENCRYPTION_KEY ||
+  "default-key-change-this-in-production";
+const ALGORITHM = "aes-256-cbc";
+
+// Decrypt token
+function decryptToken(encrypted: string, ivHex: string): string {
+  const key = crypto.scryptSync(ENCRYPTION_KEY, "salt", 32);
+  const iv = Buffer.from(ivHex, "hex");
+  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
+  let decrypted = decipher.update(encrypted, "hex", "utf8");
+  decrypted += decipher.final("utf8");
+  return decrypted;
+}
+
+// GET /api/onprem/api-tokens
+// Get all API token names for OnPrem (uses API Key auth)
+onpremRouter.get("/api-tokens", validateApiKey, async (req: any, res) => {
+  try {
+    const { tenantId } = req;
+
+    const tenantDoc = await db.collection("tenants").doc(tenantId).get();
+
+    if (!tenantDoc.exists) {
+      return res.status(404).json({ error: "Tenant not found" });
+    }
+
+    const tenantData = tenantDoc.data();
+    const apiTokens = tenantData?.apiTokens || {};
+
+    // Return only token names, not values
+    const tokenNames = Object.keys(apiTokens);
+
+    console.log(`📦 [OnPrem] API tokens found: ${tokenNames.join(", ")}`);
+    res.json({ tokens: tokenNames });
+  } catch (error: any) {
+    console.error("❌ Error fetching API tokens:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/onprem/api-tokens/:name
+// Get a specific API token (decrypted) for OnPrem
+onpremRouter.get("/api-tokens/:name", validateApiKey, async (req: any, res) => {
+  try {
+    const { tenantId } = req;
+    const { name } = req.params;
+
+    const tenantDoc = await db.collection("tenants").doc(tenantId).get();
+
+    if (!tenantDoc.exists) {
+      return res.status(404).json({ error: "Tenant not found" });
+    }
+
+    const tenantData = tenantDoc.data();
+    const tokenData = tenantData?.apiTokens?.[name];
+
+    if (!tokenData) {
+      return res.status(404).json({ error: "API token not found" });
+    }
+
+    // Decrypt the token
+    const decrypted = decryptToken(tokenData.encrypted, tokenData.iv);
+
+    console.log(`🔓 [OnPrem] Decrypted API token: ${name}`);
+    res.json({ name, token: decrypted });
+  } catch (error: any) {
+    console.error("❌ Error fetching API token:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export { validateApiKey };
